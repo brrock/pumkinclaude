@@ -1994,12 +1994,9 @@ struct NoiseRouterRepr {
     preliminary_surface_level: DensityFunctionRepr,
     #[serde(rename(deserialize = "finalDensity"))]
     final_density: DensityFunctionRepr,
-    #[serde(rename(deserialize = "veinToggle"))]
-    vein_toggle: DensityFunctionRepr,
-    #[serde(rename(deserialize = "veinRidged"))]
-    vein_ridged: DensityFunctionRepr,
-    #[serde(rename(deserialize = "veinGap"))]
-    vein_gap: DensityFunctionRepr,
+    /// Density functions referenced by the dimension's material rule, keyed by id.
+    #[serde(skip)]
+    material_functions: Vec<(String, DensityFunctionRepr)>,
 }
 
 impl NoiseRouterRepr {
@@ -2017,9 +2014,9 @@ impl NoiseRouterRepr {
         self.ridges.slice_uniform_axes(AXES_ALL);
         self.preliminary_surface_level.slice_uniform_axes(AXES_ALL);
         self.final_density.slice_uniform_axes(AXES_ALL);
-        self.vein_toggle.slice_uniform_axes(AXES_ALL);
-        self.vein_ridged.slice_uniform_axes(AXES_ALL);
-        self.vein_gap.slice_uniform_axes(AXES_ALL);
+        for (_, function) in &mut self.material_functions {
+            function.slice_uniform_axes(AXES_ALL);
+        }
     }
 
     fn optimize(&mut self) {
@@ -2035,9 +2032,9 @@ impl NoiseRouterRepr {
         self.ridges.optimize();
         self.preliminary_surface_level.optimize();
         self.final_density.optimize();
-        self.vein_toggle.optimize();
-        self.vein_ridged.optimize();
-        self.vein_gap.optimize();
+        for (_, function) in &mut self.material_functions {
+            function.optimize();
+        }
     }
 
     fn into_token_stream_compiled(mut self, dim_name: &str) -> (TokenStream, TokenStream) {
@@ -2074,21 +2071,18 @@ impl NoiseRouterRepr {
             &mut noise_nodes,
             &mut noise_lookup_map,
         );
-        let vein_toggle = self.vein_toggle.get_index_for_component(
-            &mut noise_component_stack,
-            &mut noise_nodes,
-            &mut noise_lookup_map,
-        );
-        let vein_ridged = self.vein_ridged.get_index_for_component(
-            &mut noise_component_stack,
-            &mut noise_nodes,
-            &mut noise_lookup_map,
-        );
-        let vein_gap = self.vein_gap.get_index_for_component(
-            &mut noise_component_stack,
-            &mut noise_nodes,
-            &mut noise_lookup_map,
-        );
+        let material_functions: Vec<TokenStream> = self
+            .material_functions
+            .iter()
+            .map(|(name, function)| {
+                let index = function.get_index_for_component(
+                    &mut noise_component_stack,
+                    &mut noise_nodes,
+                    &mut noise_lookup_map,
+                );
+                quote!((#name, #index))
+            })
+            .collect();
         let noise_erosion = self.erosion.get_index_for_component(
             &mut noise_component_stack,
             &mut noise_nodes,
@@ -2169,9 +2163,7 @@ impl NoiseRouterRepr {
                     erosion: #noise_erosion,
                     depth: #noise_depth,
                     final_density: #final_density,
-                    vein_toggle: #vein_toggle,
-                    vein_ridged: #vein_ridged,
-                    vein_gap: #vein_gap,
+                    material_functions: &[#(#material_functions),*],
                 },
                 surface_estimator: BaseSurfaceEstimator {
                     full_component_stack: &[#(#surface_component_stack),*],
@@ -2896,36 +2888,17 @@ fn load_vanilla_noise_router(
         .or_else(|| aquifers.and_then(|a| a.get("surface_level")))
         .unwrap_or(&zero);
 
-    let vein_toggle = nr.get("vein_toggle").cloned().unwrap_or_else(|| {
-        if dim_name.starts_with("overworld")
-            || dim_name == "amplified"
-            || dim_name == "large_biomes"
-        {
-            serde_json::Value::String("minecraft:overworld/ore_vein/toggle".to_string())
-        } else {
-            zero.clone()
-        }
-    });
-    let vein_ridged = nr.get("vein_ridged").cloned().unwrap_or_else(|| {
-        if dim_name.starts_with("overworld")
-            || dim_name == "amplified"
-            || dim_name == "large_biomes"
-        {
-            serde_json::Value::String("minecraft:overworld/ore_vein/mask".to_string())
-        } else {
-            zero.clone()
-        }
-    });
-    let vein_gap = nr.get("vein_gap").cloned().unwrap_or_else(|| {
-        if dim_name.starts_with("overworld")
-            || dim_name == "amplified"
-            || dim_name == "large_biomes"
-        {
-            serde_json::Value::String("minecraft:overworld/ore_vein/gap".to_string())
-        } else {
-            zero.clone()
-        }
-    });
+    let mut material_function_names = Vec::new();
+    if let Some(rule) = val.get("material_rule") {
+        collect_material_functions(rule, &mut material_function_names);
+    }
+    let material_functions = material_function_names
+        .into_iter()
+        .map(|name| {
+            let function = parse_vanilla_df(base_df_dir, &serde_json::Value::String(name.clone()));
+            (name, function)
+        })
+        .collect();
 
     NoiseRouterRepr {
         barrier_noise: parse_vanilla_df(base_df_dir, barrier),
@@ -2940,9 +2913,60 @@ fn load_vanilla_noise_router(
         ridges: parse_vanilla_df(base_df_dir, nr.get("ridges").unwrap_or(&zero)),
         preliminary_surface_level: parse_vanilla_df(base_df_dir, preliminary_surface_level),
         final_density: parse_vanilla_df(base_df_dir, nr.get("final_density").unwrap_or(&zero)),
-        vein_toggle: parse_vanilla_df(base_df_dir, &vein_toggle),
-        vein_ridged: parse_vanilla_df(base_df_dir, &vein_ridged),
-        vein_gap: parse_vanilla_df(base_df_dir, &vein_gap),
+        material_functions,
+    }
+}
+
+/// Collects the density function ids that `minecraft:ore_vein` rules reference, in rule order.
+fn collect_material_functions(rule: &serde_json::Value, names: &mut Vec<String>) {
+    match rule {
+        serde_json::Value::String(reference) => {
+            let clean = reference.strip_prefix("minecraft:").unwrap_or(reference);
+            let path =
+                std::path::Path::new("../../assets/datapack/data/minecraft/worldgen/material_rule")
+                    .join(format!("{clean}.json"));
+            let content = fs::read_to_string(&path).unwrap_or_else(|err| {
+                panic!("Failed to read material rule at {}: {err}", path.display())
+            });
+            let parsed: serde_json::Value = serde_json::from_str(&content).unwrap_or_else(|err| {
+                panic!("Failed to parse material rule at {}: {err}", path.display())
+            });
+            collect_material_functions(&parsed, names);
+        }
+        serde_json::Value::Object(object) => {
+            match object.get("type").and_then(serde_json::Value::as_str) {
+                Some("minecraft:ore_vein") => {
+                    for key in ["density", "richness", "filler_gap"] {
+                        let name = object
+                            .get(key)
+                            .and_then(serde_json::Value::as_str)
+                            .unwrap_or_else(|| {
+                                panic!("ore_vein {key} must be a density function id")
+                            });
+                        if !names.iter().any(|existing| existing == name) {
+                            names.push(name.to_string());
+                        }
+                    }
+                }
+                Some("minecraft:sequence") => {
+                    for entry in object
+                        .get("sequence")
+                        .and_then(serde_json::Value::as_array)
+                        .into_iter()
+                        .flatten()
+                    {
+                        collect_material_functions(entry, names);
+                    }
+                }
+                Some("minecraft:condition") => {
+                    if let Some(then_run) = object.get("then_run") {
+                        collect_material_functions(then_run, names);
+                    }
+                }
+                _ => {}
+            }
+        }
+        _ => {}
     }
 }
 
@@ -3345,9 +3369,8 @@ pub fn build() -> TokenStream {
             pub erosion: usize,
             pub depth: usize,
             pub final_density: usize,
-            pub vein_toggle: usize,
-            pub vein_ridged: usize,
-            pub vein_gap: usize,
+            /// Density functions the material rule samples, by id.
+            pub material_functions: &'static [(&'static str, usize)],
         }
 
         pub struct BaseSurfaceEstimator {

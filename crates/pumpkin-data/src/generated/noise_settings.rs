@@ -5,7 +5,6 @@ use crate::dimension::Dimension;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct NoiseSettings {
     pub aquifers_enabled: bool,
-    pub ore_veins_enabled: bool,
     pub legacy_random_source: bool,
     pub sea_level: i32,
     pub default_fluid: &'static BlockState,
@@ -65,7 +64,6 @@ impl GenerationShapeConfig {
 impl NoiseSettings {
     pub const AMPLIFIED: NoiseSettings = NoiseSettings {
         aquifers_enabled: true,
-        ore_veins_enabled: true,
         legacy_random_source: false,
         sea_level: 63i32,
         default_fluid: crate::Block::WATER.default_state,
@@ -99,7 +97,6 @@ impl NoiseSettings {
     };
     pub const CAVES: NoiseSettings = NoiseSettings {
         aquifers_enabled: false,
-        ore_veins_enabled: false,
         legacy_random_source: true,
         sea_level: 32i32,
         default_fluid: crate::Block::WATER.default_state,
@@ -114,7 +111,6 @@ impl NoiseSettings {
     };
     pub const END: NoiseSettings = NoiseSettings {
         aquifers_enabled: false,
-        ore_veins_enabled: false,
         legacy_random_source: true,
         sea_level: 0i32,
         default_fluid: crate::Block::AIR.default_state,
@@ -129,7 +125,6 @@ impl NoiseSettings {
     };
     pub const FLOATING_ISLANDS: NoiseSettings = NoiseSettings {
         aquifers_enabled: false,
-        ore_veins_enabled: false,
         legacy_random_source: true,
         sea_level: -64i32,
         default_fluid: crate::Block::WATER.default_state,
@@ -144,7 +139,6 @@ impl NoiseSettings {
     };
     pub const LARGE_BIOMES: NoiseSettings = NoiseSettings {
         aquifers_enabled: true,
-        ore_veins_enabled: true,
         legacy_random_source: false,
         sea_level: 63i32,
         default_fluid: crate::Block::WATER.default_state,
@@ -178,7 +172,6 @@ impl NoiseSettings {
     };
     pub const NETHER: NoiseSettings = NoiseSettings {
         aquifers_enabled: false,
-        ore_veins_enabled: false,
         legacy_random_source: true,
         sea_level: 32i32,
         default_fluid: crate::Block::LAVA.default_state,
@@ -193,7 +186,6 @@ impl NoiseSettings {
     };
     pub const OVERWORLD: NoiseSettings = NoiseSettings {
         aquifers_enabled: true,
-        ore_veins_enabled: true,
         legacy_random_source: false,
         sea_level: 63i32,
         default_fluid: crate::Block::WATER.default_state,

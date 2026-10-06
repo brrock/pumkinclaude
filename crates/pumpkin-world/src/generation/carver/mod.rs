@@ -9,9 +9,11 @@ use crate::generation::generator::VanillaGenerator;
 use crate::generation::noise::aquifer_sampler::CarverAquiferSampler;
 use crate::generation::noise::perlin::DoublePerlinNoiseSampler;
 use crate::generation::noise::router::multi_noise_sampler::MultiNoiseSampler;
+use crate::generation::noise::router::proto_noise_router::ProtoNoiseRouter;
 use crate::generation::noise::router::surface_height_sampler::{
     SurfaceHeightEstimateSampler, SurfaceHeightSamplerBuilderOptions,
 };
+use crate::generation::surface::ore_vein::OreVeinSampler;
 use crate::generation::surface::rule::try_apply_material_rule;
 use crate::generation::surface::terrain::SurfaceTerrainBuilder;
 use crate::generation::surface::{MaterialRuleContext, steep_material_condition};
@@ -59,6 +61,7 @@ pub struct CarvingContext<'a> {
     pub min_y: i8,
     pub height: u16,
     pub random_config: &'a GlobalRandomConfig,
+    pub noise_router: &'a ProtoNoiseRouter,
     pub surface_noise: &'a DoublePerlinNoiseSampler,
     pub secondary_noise: &'a DoublePerlinNoiseSampler,
     pub terrain_builder: &'a SurfaceTerrainBuilder,
@@ -90,6 +93,11 @@ impl CarvingContext<'_> {
             self.min_y,
             self.height,
             &self.random_config.base_random_deriver,
+            OreVeinSampler::new(
+                self.noise_router,
+                &self.random_config.ore_random_deriver,
+                None,
+            ),
             self.terrain_builder,
             self.surface_noise,
             self.secondary_noise,
@@ -304,6 +312,7 @@ pub fn carve(chunk: &mut ProtoChunk, generator: &VanillaGenerator) {
             min_y: generator.dimension.min_y as i8,
             height: generator.dimension.logical_height as u16,
             random_config: &generator.random_config,
+            noise_router: &generator.base_router.noise,
             surface_noise: &generator.terrain_cache.surface_noise,
             secondary_noise: &generator.terrain_cache.secondary_noise,
             terrain_builder: &generator.terrain_cache.terrain_builder,
@@ -517,6 +526,7 @@ fn with_carve_run_options<F>(
         min_y: generator.dimension.min_y as i8,
         height: generator.dimension.logical_height as u16,
         random_config: &generator.random_config,
+        noise_router: &generator.base_router.noise,
         surface_noise: &generator.terrain_cache.surface_noise,
         secondary_noise: &generator.terrain_cache.secondary_noise,
         terrain_builder: &generator.terrain_cache.terrain_builder,

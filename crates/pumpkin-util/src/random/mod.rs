@@ -368,6 +368,18 @@ impl RandomDeriverImpl for RandomDeriver {
     }
 }
 
+impl RandomDeriver {
+    /// Vanilla `PositionalRandomFactory.fromHashOf`, with the name's MD5 halves and Java
+    /// `String.hashCode` precomputed for the Xoroshiro and legacy factories respectively.
+    #[must_use]
+    pub const fn from_hash_of(&self, md5_lo: u64, md5_hi: u64, java_hash: i32) -> RandomGenerator {
+        match self {
+            Self::Xoroshiro(x) => RandomGenerator::Xoroshiro(x.from_lo_and_hi(md5_lo, md5_hi)),
+            Self::Legacy(l) => l.from_java_hash(java_hash),
+        }
+    }
+}
+
 /// Hashes a block position into a 64-bit value for use in RNG seeding.
 ///
 /// This hash function is designed to produce well-distributed values for

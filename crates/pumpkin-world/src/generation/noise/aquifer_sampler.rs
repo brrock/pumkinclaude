@@ -1,7 +1,7 @@
 use pumpkin_data::{Block, BlockState, noise_settings::NoiseSettings};
 use pumpkin_util::{
     math::{clamped_map, floor_div, vector3::Vector3},
-    random::{RandomImpl, xoroshiro128::XoroshiroSplitter},
+    random::{RandomDeriver, RandomDeriverImpl, RandomImpl},
 };
 
 use crate::generation::{
@@ -187,7 +187,7 @@ impl WorldAquiferSampler {
     pub fn new(
         chunk_x: i32,
         chunk_z: i32,
-        random_deriver: &XoroshiroSplitter,
+        random_deriver: &RandomDeriver,
         minimum_y: i8,
         height: u16,
         fluid_level: StandardChunkFluidLevelSampler,
@@ -820,7 +820,7 @@ mod random_positions_and_hypot {
     use crate::generation::{
         GlobalRandomConfig,
         noise::{
-            BlockStateSampler, ChunkNoiseGenerator, LAVA_BLOCK, WATER_BLOCK,
+            ChunkNoiseGenerator, LAVA_BLOCK, WATER_BLOCK,
             router::{
                 chunk_noise_router::ChunkNoiseRouter,
                 density_volume::DensityVolume,
@@ -877,19 +877,11 @@ mod random_positions_and_hypot {
             shape,
             sampler,
             true,
-            true,
             Vec::new(),
             Vec::new(),
             None,
         );
-        let mut samplers_vec = noise.state_sampler.samplers.into_vec();
-        let first_sampler = samplers_vec.remove(0);
-
-        let BlockStateSampler::Aquifer(sampler) = first_sampler else {
-            panic!("Expected Aquifer")
-        };
-
-        let AquiferSampler::Aquifer(aquifer) = sampler else {
+        let AquiferSampler::Aquifer(aquifer) = noise.aquifer else {
             unreachable!()
         };
 

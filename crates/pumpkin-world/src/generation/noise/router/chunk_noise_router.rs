@@ -187,9 +187,7 @@ pub struct ChunkNoiseRouter<'a> {
     erosion: usize,
     depth: usize,
     final_density: usize,
-    vein_toggle: usize,
-    vein_ridged: usize,
-    vein_gap: usize,
+    material_functions: &'static [(&'static str, usize)],
     component_stack: Box<[ChunkNoiseFunctionComponent<'a>]>,
 }
 
@@ -204,9 +202,34 @@ impl ChunkNoiseRouter<'_> {
     sample_function!(erosion, erosion_volume);
     sample_function!(depth, depth_volume);
     sample_function!(final_density, final_density_volume);
-    sample_function!(vein_toggle, vein_toggle_volume);
-    sample_function!(vein_ridged, vein_ridged_volume);
-    sample_function!(vein_gap, vein_gap_volume);
+
+    /// Component index of a density function the material rule references by id.
+    #[must_use]
+    pub fn material_function(&self, name: &str) -> Option<usize> {
+        self.material_functions
+            .iter()
+            .find(|(id, _)| *id == name)
+            .map(|&(_, index)| index)
+    }
+
+    #[inline]
+    pub fn sample_component(&mut self, index: usize, pos: &Vector3<i32>) -> f32 {
+        ChunkNoiseFunctionComponent::sample_from_stack(&mut self.component_stack[..=index], pos)
+    }
+
+    #[inline]
+    pub fn sample_component_volume(
+        &mut self,
+        index: usize,
+        buffer: &mut [f32],
+        volume: &DensityVolume,
+    ) {
+        ChunkNoiseFunctionComponent::sample_volume_from_stack(
+            &mut self.component_stack[..=index],
+            buffer,
+            volume,
+        );
+    }
 }
 
 impl<'a> ChunkNoiseRouter<'a> {
@@ -279,9 +302,7 @@ impl<'a> ChunkNoiseRouter<'a> {
             erosion: base.erosion,
             depth: base.depth,
             final_density: base.final_density,
-            vein_toggle: base.vein_toggle,
-            vein_ridged: base.vein_ridged,
-            vein_gap: base.vein_gap,
+            material_functions: base.material_functions,
             component_stack: component_stack.into_boxed_slice(),
         }
     }

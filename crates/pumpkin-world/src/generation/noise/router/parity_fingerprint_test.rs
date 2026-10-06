@@ -38,9 +38,9 @@ fn overworld_density_fingerprint_is_stable() {
                     let pos = Vector3::new(x, y, z);
 
                     results.push(router.final_density(&pos));
-                    results.push(router.vein_toggle(&pos));
-                    results.push(router.vein_ridged(&pos));
-                    results.push(router.vein_gap(&pos));
+                    for &(_, index) in proto_routers.noise.material_functions {
+                        results.push(router.sample_component(index, &pos));
+                    }
                 }
             }
         }
@@ -48,7 +48,7 @@ fn overworld_density_fingerprint_is_stable() {
 
     let hash = fnv1a_hash_f32(results.into_iter());
     assert_eq!(
-        hash, 2_949_980_303_647_690_266,
+        hash, 3_557_678_135_829_680_580,
         "Overworld density fingerprint changed"
     );
 }

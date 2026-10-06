@@ -21,7 +21,10 @@ mod surface;
 use generator::VanillaGenerator;
 use pumpkin_data::dimension::Dimension;
 use pumpkin_util::{
-    random::xoroshiro128::{Xoroshiro, XoroshiroSplitter},
+    random::{
+        RandomDeriver, RandomDeriverImpl, RandomImpl, legacy_rand::LegacyRand,
+        xoroshiro128::Xoroshiro,
+    },
     world_seed::Seed,
 };
 
@@ -86,18 +89,23 @@ pub fn get_world_gen_with_all_settings(
     }
 }
 
+/// Vanilla `RandomState`'s positional random factories.
 pub struct GlobalRandomConfig {
     pub seed: u64,
     pub legacy_random_source: bool,
-    pub base_random_deriver: XoroshiroSplitter,
-    aquifer_random_deriver: XoroshiroSplitter,
-    pub ore_random_deriver: XoroshiroSplitter,
+    pub base_random_deriver: RandomDeriver,
+    aquifer_random_deriver: RandomDeriver,
+    pub ore_random_deriver: RandomDeriver,
 }
 
 impl GlobalRandomConfig {
     #[must_use]
     pub fn new(seed: u64, legacy_random_source: bool) -> Self {
-        let random_deriver = Xoroshiro::from_seed(seed).next_splitter();
+        let random_deriver = if legacy_random_source {
+            LegacyRand::from_seed(seed).next_splitter()
+        } else {
+            RandomDeriver::Xoroshiro(Xoroshiro::from_seed(seed).next_splitter())
+        };
 
         let aquifer_deriver = random_deriver
             .split_string("minecraft:aquifer")

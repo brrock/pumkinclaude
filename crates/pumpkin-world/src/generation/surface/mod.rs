@@ -8,9 +8,10 @@ use pumpkin_data::{
 };
 use pumpkin_util::{
     math::{lerp2, vertical_surface_type::VerticalSurfaceType},
-    random::{RandomImpl, xoroshiro128::XoroshiroSplitter},
+    random::{RandomDeriver, RandomDeriverImpl, RandomImpl},
 };
 
+use ore_vein::OreVeinSampler;
 use terrain::SurfaceTerrainBuilder;
 
 use crate::{
@@ -26,13 +27,15 @@ use super::{
     },
 };
 
+pub mod ore_vein;
 pub mod rule;
 pub mod terrain;
 
 pub struct MaterialRuleContext<'a> {
     pub min_y: i8,
     pub height: u16,
-    pub random_deriver: &'a XoroshiroSplitter,
+    pub random_deriver: &'a RandomDeriver,
+    pub ore_veins: OreVeinSampler<'a>,
     fluid_height: i32,
     pub block_pos_x: i32,
     pub block_pos_y: i32,
@@ -65,10 +68,12 @@ pub struct MaterialRuleContext<'a> {
 }
 
 impl<'a> MaterialRuleContext<'a> {
+    #[expect(clippy::too_many_arguments)]
     pub const fn new(
         min_y: i8,
         height: u16,
-        random_deriver: &'a XoroshiroSplitter,
+        random_deriver: &'a RandomDeriver,
+        ore_veins: OreVeinSampler<'a>,
         terrain_builder: &'a SurfaceTerrainBuilder,
         surface_noise: &'a DoublePerlinNoiseSampler,
         secondary_noise: &'a DoublePerlinNoiseSampler,
@@ -85,6 +90,7 @@ impl<'a> MaterialRuleContext<'a> {
             last_unique_horizontal_pos_value: HORIZONTAL_POS - 1,
             last_est_heiht_unique_horizontal_pos_value: HORIZONTAL_POS - 1,
             random_deriver,
+            ore_veins,
             terrain_builder,
             fluid_height: 0,
             block_pos_x: 0,
@@ -103,17 +109,18 @@ impl<'a> MaterialRuleContext<'a> {
         }
     }
 
+    /// Vanilla `MaterialSystem.getSurfaceDepth`, which works in doubles.
     fn sample_run_depth(&self) -> i32 {
-        let noise =
-            self.surface_noise
-                .sample(self.block_pos_x as f64, 0.0, self.block_pos_z as f64);
-        (noise * 2.75
-            + 3.0
-            + (self
-                .random_deriver
-                .split_pos(self.block_pos_x, 0, self.block_pos_z)
-                .next_f64()
-                * 0.25) as f32) as i32
+        let noise = f64::from(self.surface_noise.sample(
+            self.block_pos_x as f64,
+            0.0,
+            self.block_pos_z as f64,
+        ));
+        let random = self
+            .random_deriver
+            .split_pos(self.block_pos_x, 0, self.block_pos_z)
+            .next_f64();
+        (noise * 2.75 + 3.0 + random * 0.25) as i32
     }
 
     pub fn init_horizontal(&mut self, x: i32, z: i32) {
@@ -329,9 +336,14 @@ pub fn test_noise_threshold(
             .push((condition.noise.id, sampler));
         context.noise_threshold_samplers.len() - 1
     });
+    let y = if condition.is_3d {
+        context.block_pos_y as f64
+    } else {
+        0.0
+    };
     let value = f64::from(context.noise_threshold_samplers[index].1.sample(
         context.block_pos_x as f64,
-        0.0,
+        y,
         context.block_pos_z as f64,
     ));
     value >= condition.min_threshold && value <= condition.max_threshold
@@ -354,11 +366,11 @@ pub fn test_stone_depth(
         0
     } else {
         pumpkin_util::math::map(
-            context.get_secondary_depth(),
+            f64::from(context.get_secondary_depth()),
             -1.0,
             1.0,
             0.0,
-            condition.secondary_depth_range as f32,
+            f64::from(condition.secondary_depth_range),
         ) as i32
     };
     stone_depth <= 1 + condition.offset + depth + depth_range
@@ -380,8 +392,6 @@ pub const fn test_water_material(
                 + context.run_depth * condition.surface_depth_multiplier
 }
 
-// random_deriver: ThreadLocal<RefCell<LruCache<usize, RandomDeriver>>>,
-
 pub fn test_vertical_gradient(
     condition: &VerticalGradientMaterialCondition,
     context: &MaterialRuleContext,
@@ -402,9 +412,19 @@ pub fn test_vertical_gradient(
     }
     let splitter = context
         .random_deriver
-        .from_lo_and_hi(condition.random_lo, condition.random_hi)
+        .from_hash_of(
+            condition.random_lo,
+            condition.random_hi,
+            condition.random_legacy_hash,
+        )
         .next_splitter();
-    let mapped = pumpkin_util::math::map(block_y as f32, true_at as f32, false_at as f32, 1.0, 0.0);
+    let probability = pumpkin_util::math::map(
+        f64::from(block_y),
+        f64::from(true_at),
+        f64::from(false_at),
+        1.0,
+        0.0,
+    );
     let mut random = splitter.split_pos(context.block_pos_x, block_y, context.block_pos_z);
-    random.next_f32() < mapped
+    f64::from(random.next_f32()) < probability
 }
