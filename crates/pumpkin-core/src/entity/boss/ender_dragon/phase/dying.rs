@@ -119,14 +119,14 @@ impl super::Phase for DyingPhase {
         };
 
         if death_time > 150 && death_time % 5 == 0 {
-            ExperienceOrbEntity::spawn(&world, pos, (xp_count as f32 * 0.08) as u32);
+            ExperienceOrbEntity::award(&world, pos, (xp_count as f32 * 0.08) as u32);
         }
 
         entity.velocity.store(Vector3::new(0.0, 0.1, 0.0));
 
         // 6. Complete death sequence at DEATH_TIMER_MAX
         if death_time >= DEATH_TIMER_MAX {
-            ExperienceOrbEntity::spawn(&world, pos, (xp_count as f32 * 0.2) as u32);
+            ExperienceOrbEntity::award(&world, pos, (xp_count as f32 * 0.2) as u32);
 
             if let Some(ref fight_mutex) = world.dragon_fight {
                 fight_mutex

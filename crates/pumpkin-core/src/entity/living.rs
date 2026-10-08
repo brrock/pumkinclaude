@@ -2087,7 +2087,7 @@ impl LivingEntity {
             {
                 let amount = dyn_self.get_experience_reward(killer);
                 if amount > 0 {
-                    ExperienceOrbEntity::spawn(&world, self.entity.pos.load(), amount);
+                    ExperienceOrbEntity::award(&world, self.entity.pos.load(), amount);
                 }
             }
             self.entity.pose.store(EntityPose::Dying);

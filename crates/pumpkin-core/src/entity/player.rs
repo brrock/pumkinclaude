@@ -8061,7 +8061,7 @@ impl InventoryPlayer for Player {
         if let Some(pos) = self.open_container_pos.load() {
             let world = self.world();
             if xp_amount > 0 {
-                crate::entity::experience_orb::ExperienceOrbEntity::spawn(
+                crate::entity::experience_orb::ExperienceOrbEntity::award(
                     &world,
                     pos.to_centered_f64(),
                     xp_amount as u32,

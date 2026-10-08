@@ -26,7 +26,7 @@ impl BlockBehaviour for SpawnerBlock {
         {
             if args.player.gamemode.load() != GameMode::Creative {
                 let xp_count = 15 + rand::random_range(0..15) + rand::random_range(0..15);
-                ExperienceOrbEntity::spawn(args.world, args.position.to_centered_f64(), xp_count);
+                ExperienceOrbEntity::award(args.world, args.position.to_centered_f64(), xp_count);
             }
         }
     }

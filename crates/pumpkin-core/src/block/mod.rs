@@ -509,7 +509,7 @@ pub fn drop_loot(
                 server.plugin_manager.fire_blocking(&server, &mut event);
             }
             if event.exp > 0 {
-                ExperienceOrbEntity::spawn(world, pos.to_f64(), event.exp as u32);
+                ExperienceOrbEntity::award(world, pos.to_f64(), event.exp as u32);
             }
         }
     }

@@ -134,7 +134,7 @@ impl BlockBehaviour for SmokerBlock {
             let xp = experience_container.extract_experience();
             if xp > 0 {
                 let pos = args.position.to_f64();
-                ExperienceOrbEntity::spawn(args.world, pos, xp as u32);
+                ExperienceOrbEntity::award(args.world, pos, xp as u32);
             }
         }
         args.world.remove_block_entity(args.position);
