@@ -18,7 +18,6 @@ impl Carver for CaveCarver {
         carver_chunk_pos: &Vector2<i32>,
         min_gen_y: i8,
         gen_depth: u16,
-        legacy_random_source: bool,
     ) {
         let CarverAdditionalConfig::Cave(ref cave_config) = config.additional else {
             return;
@@ -85,7 +84,6 @@ impl Carver for CaveCarver {
                     distance,
                     start_vertical_radius_multiplier,
                     floor_level,
-                    legacy_random_source,
                 );
             }
         }
@@ -136,9 +134,8 @@ impl CaveCarver {
         dist: i32,
         y_scale: f64,
         floor_level: f64,
-        legacy_random_source: bool,
     ) {
-        let mut random = super::new_carver_random(tunnel_seed as u64, legacy_random_source);
+        let mut random = super::new_carver_random(tunnel_seed as u64);
         let split_point = random.next_bounded_i32(dist / 2) + dist / 4;
         let is_steep = random.next_bounded_i32(6) == 0;
         let mut y_rota = 0.0f32;
@@ -179,7 +176,6 @@ impl CaveCarver {
                     dist,
                     1.0,
                     floor_level,
-                    legacy_random_source,
                 );
                 Self::create_tunnel(
                     chunk_pos,
@@ -197,7 +193,6 @@ impl CaveCarver {
                     dist,
                     1.0,
                     floor_level,
-                    legacy_random_source,
                 );
                 return;
             }
@@ -332,7 +327,6 @@ mod tests {
             &carver_chunk_pos,
             -64,
             384,
-            false,
         );
 
         assert!(!mask.is_empty());

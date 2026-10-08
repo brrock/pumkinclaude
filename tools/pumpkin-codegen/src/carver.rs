@@ -231,8 +231,7 @@ fn value_to_int_provider(v: &Value) -> TokenStream {
             "minecraft:very_biased_to_bottom" => {
                 let min = v["min_inclusive"].as_i64().unwrap_or(0) as i32;
                 let max = v["max_inclusive"].as_i64().unwrap_or(0) as i32;
-                let inner = v["inner"].as_i64().unwrap_or(1) as i32;
-                quote! { IntProvider::Object(NormalIntProvider::VeryBiasedToBottom(VeryBiasedToBottomIntProvider::new(#min, #max, #inner))) }
+                quote! { IntProvider::Object(NormalIntProvider::VeryBiasedToBottom(VeryBiasedToBottomIntProvider::new(#min, #max))) }
             }
             _ => {
                 quote! { IntProvider::Constant(0) }

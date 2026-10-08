@@ -1198,7 +1198,10 @@ mod tests {
         props.put_string("half", "upper".to_string());
         seagrass.put_compound("properties", props);
 
-        let mixed = NbtTag::List(vec![NbtTag::Compound(deepslate), NbtTag::Compound(seagrass)]);
+        let mixed = NbtTag::List(vec![
+            NbtTag::Compound(deepslate),
+            NbtTag::Compound(seagrass),
+        ]);
         let result = extract_u16_array(&mixed).expect("should extract palette");
         assert_eq!(result[0], Block::DEEPSLATE.default_state.id);
         assert_eq!(

@@ -17,7 +17,6 @@ impl Carver for CanyonCarver {
         carver_chunk_pos: &Vector2<i32>,
         min_gen_y: i8,
         gen_depth: u16,
-        legacy_random_source: bool,
     ) {
         let CarverAdditionalConfig::Canyon(ref canyon_config) = config.additional else {
             return;
@@ -53,7 +52,6 @@ impl Carver for CanyonCarver {
             0,
             distance,
             y_scale,
-            legacy_random_source,
         );
     }
 }
@@ -76,9 +74,8 @@ impl CanyonCarver {
         step: i32,
         distance: i32,
         y_scale: f64,
-        legacy_random_source: bool,
     ) {
-        let mut random = super::new_carver_random(tunnel_seed as u64, legacy_random_source);
+        let mut random = super::new_carver_random(tunnel_seed as u64);
         let width_factor_per_height =
             Self::init_width_factors(gen_depth as usize, config, &mut random);
         let mut y_rota = 0.0f32;
@@ -222,7 +219,6 @@ mod tests {
             &carver_chunk_pos,
             -64,
             384,
-            false,
         );
 
         assert!(!mask.is_empty());

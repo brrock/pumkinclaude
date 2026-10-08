@@ -204,7 +204,6 @@ pub trait Carver {
         carver_chunk_pos: &Vector2<i32>,
         min_gen_y: i8,
         gen_depth: u16,
-        legacy_random_source: bool,
     );
 }
 
@@ -236,16 +235,13 @@ pub fn carve(chunk: &mut ProtoChunk, generator: &VanillaGenerator) {
             let carver_z = chunk_z + dz;
             let carver_chunk_pos = Vector2::new(carver_x, carver_z);
 
-            let carver_biome = if dx == 0 && dz == 0 {
-                chunk.get_biome(0, 0, 0)
-            } else {
-                supplier.biome(
-                    biome_coords::from_block(section_coords::section_to_block(carver_x)),
-                    0,
-                    biome_coords::from_block(section_coords::section_to_block(carver_z)),
-                    &mut multi_noise_sampler,
-                )
-            };
+            // Vanilla `getBiomeGenerationSettingsForCarver`: quart y 0 at the chunk's min corner.
+            let carver_biome = supplier.biome(
+                biome_coords::from_block(section_coords::section_to_block(carver_x)),
+                0,
+                biome_coords::from_block(section_coords::section_to_block(carver_z)),
+                &mut multi_noise_sampler,
+            );
 
             for (index, &config) in carver_biome.carvers.iter().enumerate() {
                 let seed = get_large_feature_seed(
@@ -253,8 +249,7 @@ pub fn carve(chunk: &mut ProtoChunk, generator: &VanillaGenerator) {
                     carver_x,
                     carver_z,
                 );
-                let mut carver_random =
-                    new_carver_random(seed, generator.settings.legacy_random_source);
+                let mut carver_random = new_carver_random(seed);
 
                 if should_carve(config, &mut carver_random) {
                     match config.additional {
@@ -267,7 +262,6 @@ pub fn carve(chunk: &mut ProtoChunk, generator: &VanillaGenerator) {
                                 &carver_chunk_pos,
                                 min_gen_y,
                                 gen_depth,
-                                generator.settings.legacy_random_source,
                             );
                         }
                         CarverAdditionalConfig::Canyon(_) => {
@@ -279,7 +273,6 @@ pub fn carve(chunk: &mut ProtoChunk, generator: &VanillaGenerator) {
                                 &carver_chunk_pos,
                                 min_gen_y,
                                 gen_depth,
-                                generator.settings.legacy_random_source,
                             );
                         }
                     }
@@ -386,16 +379,12 @@ fn get_large_feature_seed(seed: u64, chunk_x: i32, chunk_z: i32) -> u64 {
     result as u64
 }
 
-const fn new_carver_random(seed: u64, non_vanilla_random: bool) -> RandomGenerator {
-    if non_vanilla_random {
-        RandomGenerator::Xoroshiro(pumpkin_util::random::xoroshiro128::Xoroshiro::from_seed(
-            seed,
-        ))
-    } else {
-        RandomGenerator::Legacy(pumpkin_util::random::legacy_rand::LegacyRand::from_seed(
-            seed,
-        ))
-    }
+/// Carvers always roll a 48-bit LCG: `WorldgenRandom(LegacyRandomSource)` for the carver and
+/// `SingleThreadedRandomSource` for each tunnel, whatever the dimension's random source.
+const fn new_carver_random(seed: u64) -> RandomGenerator {
+    RandomGenerator::Legacy(pumpkin_util::random::legacy_rand::LegacyRand::from_seed(
+        seed,
+    ))
 }
 
 fn carve_top_material(
