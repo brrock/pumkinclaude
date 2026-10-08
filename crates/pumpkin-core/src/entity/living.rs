@@ -951,8 +951,44 @@ impl LivingEntity {
         self.entity.entity_id
     }
 
+    /// Vanilla `LivingEntity.canBeAffected` with the per-mob overrides folded in.
+    #[must_use]
+    pub fn can_be_affected(&self, effect: &StatusEffect) -> bool {
+        let entity_type = self.entity.entity_type;
+        let immune = if effect == &StatusEffect::WITHER {
+            entity_type == &EntityType::WITHER || entity_type == &EntityType::WITHER_SKELETON
+        } else if effect == &StatusEffect::POISON {
+            entity_type == &EntityType::SPIDER
+                || entity_type == &EntityType::CAVE_SPIDER
+                || entity_type == &EntityType::NAUTILUS
+                || entity_type == &EntityType::ZOMBIE_NAUTILUS
+        } else {
+            effect == &StatusEffect::WEAKNESS && entity_type == &EntityType::PARCHED
+        };
+        if immune {
+            return false;
+        }
+        if entity_type.has_tag(&tag::EntityType::MINECRAFT_IMMUNE_TO_INFESTED) {
+            return effect != &StatusEffect::INFESTED;
+        }
+        if entity_type.has_tag(&tag::EntityType::MINECRAFT_IMMUNE_TO_OOZING) {
+            return effect != &StatusEffect::OOZING;
+        }
+        !entity_type.has_tag(&tag::EntityType::MINECRAFT_IGNORES_POISON_AND_REGEN)
+            || (effect != &StatusEffect::REGENERATION && effect != &StatusEffect::POISON)
+    }
+
+    /// Vanilla `LivingEntity.isAffectedByPotions`.
+    #[must_use]
+    pub fn is_affected_by_potions(&self) -> bool {
+        self.entity.entity_type != &EntityType::ARMOR_STAND && self.health.load() > 0.0
+    }
+
     #[expect(clippy::too_many_lines)]
     pub fn add_effect(&self, effect: Effect) {
+        if !self.can_be_affected(effect.effect_type) {
+            return;
+        }
         let mut effect_event =
             crate::plugin::api::events::entity::entity_potion_effect::EntityPotionEffectEvent::new(
                 self.entity.entity_id,
@@ -2087,7 +2123,7 @@ impl LivingEntity {
             {
                 let amount = dyn_self.get_experience_reward(killer);
                 if amount > 0 {
-                    ExperienceOrbEntity::spawn(&world, self.entity.pos.load(), amount);
+                    ExperienceOrbEntity::award(&world, self.entity.pos.load(), amount);
                 }
             }
             self.entity.pose.store(EntityPose::Dying);

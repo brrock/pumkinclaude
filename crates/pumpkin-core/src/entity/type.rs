@@ -107,8 +107,10 @@ use crate::entity::passive::wolf::WolfEntity;
 use crate::entity::passive::zombie_horse::ZombieHorseEntity;
 use crate::entity::projectile::ThrownItemEntity;
 use crate::entity::projectile::arrow::ArrowEntity;
+use crate::entity::projectile::dragon_fireball::DragonFireballEntity;
 use crate::entity::projectile::egg::EggEntity;
 use crate::entity::projectile::ender_pearl::EnderPearlEntity;
+use crate::entity::projectile::experience_bottle::ExperienceBottleEntity;
 use crate::entity::projectile::eye_of_ender::EyeOfEnder;
 use crate::entity::projectile::fireball::FireballEntity;
 use crate::entity::projectile::firework_rocket::FireworkRocketEntity;
@@ -233,7 +235,7 @@ pub fn from_type(
         id if id == EntityType::ENDER_DRAGON.id => EnderDragonEntity::new(entity),
 
         id if id == EntityType::AREA_EFFECT_CLOUD.id => {
-            crate::entity::area_effect_cloud::AreaEffectCloudEntity::new(entity)
+            Arc::new(crate::entity::area_effect_cloud::AreaEffectCloudEntity::new(entity))
         }
         id if id == EntityType::ARMOR_STAND.id => Arc::new(ArmorStandEntity::new(entity)),
         id if id == EntityType::CUSHION.id => Arc::new(CushionEntity::new(entity, 0)),
@@ -250,6 +252,10 @@ pub fn from_type(
         id if id == EntityType::END_CRYSTAL.id => Arc::new(EndCrystalEntity::new(entity)),
         id if id == EntityType::ENDER_PEARL.id => Arc::new(EnderPearlEntity::new(entity)),
         id if id == EntityType::SNOWBALL.id => Arc::new(SnowballEntity::new(entity)),
+        id if id == EntityType::DRAGON_FIREBALL.id => Arc::new(DragonFireballEntity::new(entity)),
+        id if id == EntityType::EXPERIENCE_BOTTLE.id => {
+            Arc::new(ExperienceBottleEntity::new(entity))
+        }
         id if id == EntityType::EGG.id => Arc::new(EggEntity::new(entity)),
         id if id == EntityType::SILVERFISH.id => SilverfishEntity::new(entity),
         id if id == EntityType::SLIME.id => SlimeEntity::new(entity),

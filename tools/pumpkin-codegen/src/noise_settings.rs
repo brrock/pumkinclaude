@@ -40,8 +40,6 @@ pub struct NoiseSettingsFileStruct {
     #[serde(default)]
     pub aquifers_enabled: Option<bool>,
     #[serde(default)]
-    pub ore_veins_enabled: Option<bool>,
-    #[serde(default)]
     pub legacy_random_source: bool,
     pub sea_level: i32,
     pub default_fluid: BlockStateCodecStruct,
@@ -209,7 +207,6 @@ impl ToTokens for GenerationShapeConfigStruct {
 #[derive(Clone)]
 pub struct NoiseSettingsStruct {
     pub aquifers_enabled: bool,
-    pub ore_veins_enabled: bool,
     pub legacy_random_source: bool,
     pub sea_level: i32,
     pub default_fluid: BlockStateCodecStruct,
@@ -221,7 +218,6 @@ pub struct NoiseSettingsStruct {
 impl ToTokens for NoiseSettingsStruct {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let aquifers = self.aquifers_enabled;
-        let ores = self.ore_veins_enabled;
         let legacy = self.legacy_random_source;
         let sea_level = self.sea_level;
         let fluid = &self.default_fluid;
@@ -232,7 +228,6 @@ impl ToTokens for NoiseSettingsStruct {
         tokens.extend(quote!(
             NoiseSettings {
                 aquifers_enabled: #aquifers,
-                ore_veins_enabled: #ores,
                 legacy_random_source: #legacy,
                 sea_level: #sea_level,
                 default_fluid: #fluid,
@@ -270,7 +265,6 @@ pub fn build() -> TokenStream {
 
         let aquifers_enabled =
             noise_settings.aquifers.is_some() || noise_settings.aquifers_enabled.unwrap_or(false);
-        let ore_veins_enabled = noise_settings.ore_veins_enabled.unwrap_or(aquifers_enabled);
 
         let spawn_target: Vec<ParameterPointStruct> = noise_settings
             .spawn_target
@@ -299,7 +293,6 @@ pub fn build() -> TokenStream {
 
         let settings = NoiseSettingsStruct {
             aquifers_enabled,
-            ore_veins_enabled,
             legacy_random_source: noise_settings.legacy_random_source,
             sea_level: noise_settings.sea_level,
             default_fluid: noise_settings.default_fluid,
@@ -330,7 +323,6 @@ pub fn build() -> TokenStream {
         #[derive(Clone, Copy, Debug, PartialEq, Eq)]
         pub struct NoiseSettings {
             pub aquifers_enabled: bool,
-            pub ore_veins_enabled: bool,
             pub legacy_random_source: bool,
             pub sea_level: i32,
             pub default_fluid: &'static BlockState,

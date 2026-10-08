@@ -128,6 +128,14 @@ fn extract_u16_array(tag: &pumpkin_nbt::tag::NbtTag) -> Option<Box<[BlockStateId
                     pumpkin_nbt::tag::NbtTag::Short(x) => BlockStateId::new_or_air(*x as u16),
                     pumpkin_nbt::tag::NbtTag::Byte(x) => BlockStateId::new_or_air(*x as u16),
                     pumpkin_nbt::tag::NbtTag::Long(x) => BlockStateId::new_or_air(*x as u16),
+                    // 26.3 writes a block without properties as its bare id, wrapped as
+                    // `{"": id}` when the palette also holds compounds.
+                    pumpkin_nbt::tag::NbtTag::String(name) => default_state_of(name),
+                    pumpkin_nbt::tag::NbtTag::Compound(compound)
+                        if let Some(name) = compound.get_string("") =>
+                    {
+                        default_state_of(name)
+                    }
                     pumpkin_nbt::tag::NbtTag::Compound(compound) => {
                         if let Ok(entry) =
                             crate::generation::structure::template::PaletteEntry::from_nbt_compound(
@@ -149,6 +157,13 @@ fn extract_u16_array(tag: &pumpkin_nbt::tag::NbtTag) -> Option<Box<[BlockStateId
         }
         _ => None,
     }
+}
+
+fn default_state_of(name: &str) -> BlockStateId {
+    crate::generation::structure::template::BlockStateResolver::resolve_simple(
+        &crate::generation::structure::template::PaletteEntry::new(name.to_string()),
+    )
+    .map_or(BlockStateId::AIR, |state| state.id)
 }
 
 fn extract_u8_array(tag: &pumpkin_nbt::tag::NbtTag) -> Option<Box<[u8]>> {
@@ -1169,6 +1184,36 @@ mod tests {
             ])
             .to_state_id(&Block::REPEATER);
         assert_eq!(result[1], repeater_state);
+    }
+
+    #[test]
+    fn extract_u16_array_from_26_3_mixed_palette() {
+        // Shape written by vanilla 26.3: property-less blocks as bare ids, wrapped in `{"": id}`
+        // when the list also holds compounds, and default-valued properties left out.
+        let mut deepslate = NbtCompound::new();
+        deepslate.put_string("", "minecraft:deepslate".to_string());
+        let mut seagrass = NbtCompound::new();
+        seagrass.put_string("id", "minecraft:tall_seagrass".to_string());
+        let mut props = NbtCompound::new();
+        props.put_string("half", "upper".to_string());
+        seagrass.put_compound("properties", props);
+
+        let mixed = NbtTag::List(vec![
+            NbtTag::Compound(deepslate),
+            NbtTag::Compound(seagrass),
+        ]);
+        let result = extract_u16_array(&mixed).expect("should extract palette");
+        assert_eq!(result[0], Block::DEEPSLATE.default_state.id);
+        assert_eq!(
+            result[1],
+            Block::TALL_SEAGRASS
+                .from_properties(&[("half", "upper")])
+                .to_state_id(&Block::TALL_SEAGRASS)
+        );
+
+        let plain = NbtTag::List(vec![NbtTag::String("minecraft:water".to_string().into())]);
+        let result = extract_u16_array(&plain).expect("should extract palette");
+        assert_eq!(result[0], Block::WATER.default_state.id);
     }
 
     #[test]

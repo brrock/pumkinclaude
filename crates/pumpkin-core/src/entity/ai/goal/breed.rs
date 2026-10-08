@@ -107,7 +107,7 @@ impl BreedGoal {
 
         world_full.send_entity_status(entity, EntityStatus::InLoveHearts, None);
         // TODO: gate on the `animalBreedingDropsXp` game rule once it exists.
-        ExperienceOrbEntity::spawn(&world_full, parent_pos, mob.get_random().random_range(1..8));
+        ExperienceOrbEntity::award(&world_full, parent_pos, mob.get_random().random_range(1..8));
     }
 }
 

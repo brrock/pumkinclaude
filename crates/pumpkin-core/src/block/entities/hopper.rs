@@ -246,7 +246,7 @@ impl HopperBlockEntity {
                             let xp = experience_container.extract_experience();
                             if xp > 0 {
                                 let pos = self.position.to_f64();
-                                ExperienceOrbEntity::spawn(world, pos, xp as u32);
+                                ExperienceOrbEntity::award(world, pos, xp as u32);
                             }
                         }
                         return true;

@@ -329,7 +329,7 @@ mod test {
 
         let mismatches = count_dump_mismatches(&chunk, expected_data, test_name);
         assert_air_above_dumped_window(&chunk, expected_data, test_name);
-        let allowed_mismatches = 6000;
+        let allowed_mismatches = 0;
         assert!(
             mismatches <= allowed_mismatches,
             "[{test_name}] Chunk noise generation mismatches vanilla! (got {mismatches} mismatches, allowed {allowed_mismatches})"
@@ -417,7 +417,7 @@ mod test {
 
         let mismatches = count_dump_mismatches(&chunk, expected_data, test_name);
         assert_air_above_dumped_window(&chunk, expected_data, test_name);
-        let allowed_mismatches = 6000;
+        let allowed_mismatches = 0;
         assert!(
             mismatches <= allowed_mismatches,
             "[{test_name}] Chunk surface generation mismatches vanilla! (got {mismatches} mismatches, allowed {allowed_mismatches})"

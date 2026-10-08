@@ -320,13 +320,6 @@ pub struct VeryBiasedToBottomIntProvider {
     pub min_inclusive: i32,
     /// The maximum value (inclusive) that can be generated.
     pub max_inclusive: i32,
-    /// The number of additional random bounds steps (default 1).
-    #[serde(default = "default_very_biased_inner")]
-    pub inner: i32,
-}
-
-const fn default_very_biased_inner() -> i32 {
-    1
 }
 
 #[cfg(feature = "codegen")]
@@ -334,12 +327,10 @@ impl ToTokens for VeryBiasedToBottomIntProvider {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let min_inclusive = LitInt::new(&self.min_inclusive.to_string(), Span::call_site());
         let max_inclusive = LitInt::new(&self.max_inclusive.to_string(), Span::call_site());
-        let inner = LitInt::new(&self.inner.to_string(), Span::call_site());
         tokens.extend(quote! {
             VeryBiasedToBottomIntProvider {
                 min_inclusive: #min_inclusive,
                 max_inclusive: #max_inclusive,
-                inner: #inner,
             }
         });
     }
@@ -347,11 +338,10 @@ impl ToTokens for VeryBiasedToBottomIntProvider {
 
 impl VeryBiasedToBottomIntProvider {
     #[must_use]
-    pub const fn new(min_inclusive: i32, max_inclusive: i32, inner: i32) -> Self {
+    pub const fn new(min_inclusive: i32, max_inclusive: i32) -> Self {
         Self {
             min_inclusive,
             max_inclusive,
-            inner,
         }
     }
 
@@ -360,16 +350,12 @@ impl VeryBiasedToBottomIntProvider {
         self.min_inclusive
     }
 
+    /// Vanilla `VeryBiasedToBottomInt.sample`.
     pub fn get(&self, random: &mut impl RandomImpl) -> i32 {
-        if self.min_inclusive >= self.max_inclusive {
-            return self.min_inclusive;
-        }
         let range = self.max_inclusive - self.min_inclusive + 1;
-        let mut bound = range;
-        for _ in 0..=self.inner {
-            bound = random.next_bounded_i32(bound) + 1;
-        }
-        self.min_inclusive + bound - 1
+        let outer = random.next_bounded_i32(range) + 1;
+        let middle = random.next_bounded_i32(outer) + 1;
+        self.min_inclusive + random.next_bounded_i32(middle)
     }
 
     #[must_use]
@@ -610,9 +596,9 @@ impl ClampedNormalIntProvider {
     /// A random integer from a normal distribution, rounded and clamped to [`min_inclusive`, `max_inclusive`].
     pub fn get(&self, random: &mut impl RandomImpl) -> i32 {
         // NOTE: Generate a normal distribution value and clamp to range
-        let gaussian = random.next_gaussian() as f32;
-        let value = gaussian.mul_add(self.deviation, self.mean).round() as i32;
-        value.clamp(self.min_inclusive, self.max_inclusive)
+        // Vanilla `ClampedNormalInt.sample` truncates after clamping as floats.
+        let value = self.mean + random.next_gaussian() as f32 * self.deviation;
+        value.clamp(self.min_inclusive as f32, self.max_inclusive as f32) as i32
     }
 
     /// Returns the maximum inclusive clamp value.

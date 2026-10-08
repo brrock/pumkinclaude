@@ -177,7 +177,20 @@ pub enum DirectMaterialRule {
     #[serde(rename = "minecraft:bandlands", alias = "minecraft:badlands")]
     Badlands,
     #[serde(rename = "minecraft:ore_vein")]
-    OreVein(serde_json::Value),
+    OreVein(OreVeinStruct),
+}
+
+/// Deserialized `minecraft:ore_vein` rule. The density functions are referenced by id and
+/// compiled into the noise router, which looks them up by name.
+#[derive(Deserialize, Clone)]
+pub struct OreVeinStruct {
+    ore_block: BlockStateCodecStruct,
+    raw_ore_block: BlockStateCodecStruct,
+    filler_block: BlockStateCodecStruct,
+    raw_ore_chance: f32,
+    density: String,
+    richness: String,
+    filler_gap: String,
 }
 
 /// Deserialized surface material condition that gates a material rule.
@@ -194,6 +207,7 @@ pub enum MaterialConditionStruct {
         noise: String,
         min_threshold: f64,
         max_threshold: f64,
+        is_3d: bool,
     },
     #[serde(rename = "minecraft:vertical_gradient")]
     VerticalGradient {
@@ -256,6 +270,7 @@ impl ToTokens for MaterialConditionStruct {
                 noise,
                 min_threshold,
                 max_threshold,
+                is_3d,
             } => {
                 let noise_id = quote::format_ident!(
                     "{}",
@@ -270,6 +285,7 @@ impl ToTokens for MaterialConditionStruct {
                         noise: DoublePerlinNoiseParameters::#noise_id,
                         min_threshold: #min_threshold,
                         max_threshold: #max_threshold,
+                        is_3d: #is_3d,
                     })
                 ));
             }
@@ -279,12 +295,14 @@ impl ToTokens for MaterialConditionStruct {
                 false_at_and_above,
             } => {
                 let bytes = md5::compute(random_name.as_bytes());
-                let lo = u64::from_le_bytes(bytes[0..8].try_into().expect("incorrect length"));
-                let hi = u64::from_le_bytes(bytes[8..16].try_into().expect("incorrect length"));
+                let lo = u64::from_be_bytes(bytes[0..8].try_into().expect("incorrect length"));
+                let hi = u64::from_be_bytes(bytes[8..16].try_into().expect("incorrect length"));
+                let legacy_hash = pumpkin_util::math::java_string_hash(random_name);
                 tokens.extend(quote!(
                     MaterialCondition::VerticalGradient(VerticalGradientMaterialCondition {
                         random_lo: #lo,
                         random_hi: #hi,
+                        random_legacy_hash: #legacy_hash,
                         true_at_and_below: #true_at_and_below,
                         false_at_and_above: #false_at_and_above,
                     })
@@ -381,6 +399,8 @@ pub enum MaterialRuleStruct {
     },
     #[serde(rename = "minecraft:bandlands")]
     Badlands,
+    #[serde(skip)]
+    OreVein(OreVeinStruct),
 }
 
 impl ToTokens for MaterialRuleStruct {
@@ -411,6 +431,28 @@ impl ToTokens for MaterialRuleStruct {
             Self::Badlands => {
                 tokens.extend(quote!(MaterialRule::Badlands(BadLandsMaterialRule)));
             }
+            Self::OreVein(vein) => {
+                let OreVeinStruct {
+                    ore_block,
+                    raw_ore_block,
+                    filler_block,
+                    raw_ore_chance,
+                    density,
+                    richness,
+                    filler_gap,
+                } = vein;
+                tokens.extend(quote!(
+                    MaterialRule::OreVein(OreVeinMaterialRule {
+                        ore_block: #ore_block,
+                        raw_ore_block: #raw_ore_block,
+                        filler_block: #filler_block,
+                        raw_ore_chance: #raw_ore_chance,
+                        density: #density,
+                        richness: #richness,
+                        filler_gap: #filler_gap,
+                    })
+                ));
+            }
         }
     }
 }
@@ -437,11 +479,12 @@ pub fn resolve_condition(
                 noise,
                 min_threshold,
                 max_threshold,
-                is_3d: _,
+                is_3d,
             } => MaterialConditionStruct::NoiseThreshold {
                 noise: noise.clone(),
                 min_threshold: *min_threshold,
                 max_threshold: *max_threshold,
+                is_3d: *is_3d,
             },
             DirectMaterialCondition::VerticalGradient {
                 random_name,
@@ -531,7 +574,7 @@ pub fn resolve_rule(
                 })
             }
             DirectMaterialRule::Badlands => Some(MaterialRuleStruct::Badlands),
-            DirectMaterialRule::OreVein(_) => None,
+            DirectMaterialRule::OreVein(vein) => Some(MaterialRuleStruct::OreVein(vein.clone())),
         },
     }
 }
@@ -589,11 +632,23 @@ pub fn build() -> TokenStream {
 
         pub struct BadLandsMaterialRule;
 
+        /// Vanilla `OreVeinRule`. The density functions are noise router entries named by id.
+        pub struct OreVeinMaterialRule {
+            pub ore_block: &'static BlockState,
+            pub raw_ore_block: &'static BlockState,
+            pub filler_block: &'static BlockState,
+            pub raw_ore_chance: f32,
+            pub density: &'static str,
+            pub richness: &'static str,
+            pub filler_gap: &'static str,
+        }
+
         pub enum MaterialRule {
             Block(BlockMaterialRule),
             Sequence(SequenceMaterialRule),
             Condition(ConditionMaterialRule),
             Badlands(BadLandsMaterialRule),
+            OreVein(OreVeinMaterialRule),
         }
 
         impl MaterialRule {
@@ -632,11 +687,13 @@ pub fn build() -> TokenStream {
             pub noise: DoublePerlinNoiseParameters,
             pub min_threshold: f64,
             pub max_threshold: f64,
+            pub is_3d: bool,
         }
 
         pub struct VerticalGradientMaterialCondition {
             pub random_lo: u64,
             pub random_hi: u64,
+            pub random_legacy_hash: i32,
             pub true_at_and_below: YOffset,
             pub false_at_and_above: YOffset,
         }

@@ -1,6 +1,8 @@
 use super::EnderDragonPhase;
 use crate::entity::{
-    Entity, area_effect_cloud::AreaEffectCloudEntity, boss::ender_dragon::EnderDragonEntity,
+    Entity,
+    area_effect_cloud::{AreaEffectCloudEntity, CloudParticle},
+    boss::ender_dragon::EnderDragonEntity,
 };
 use pumpkin_data::entity::EntityType;
 use pumpkin_util::math::vector3::Vector3;
@@ -50,28 +52,23 @@ impl super::Phase for SitBreathingPhase {
 
             let cloud_entity =
                 Entity::new(world.clone(), cloud_pos, &EntityType::AREA_EFFECT_CLOUD);
-            let cloud = AreaEffectCloudEntity::create(
-                cloud_entity,
-                pumpkin_data::item_stack::ItemStack::new(
-                    0,
-                    &pumpkin_data::item::Item::DRAGON_BREATH,
-                ),
-                vec![(
-                    &pumpkin_data::effect::StatusEffect::INSTANT_DAMAGE,
-                    1,
-                    0,
-                    false,
-                    true,
-                    true,
-                )],
-                600,  // duration
-                3.0,  // radius
-                20,   // reapplication delay
-                20,   // wait time
-                0.5,  // radius on use
-                -100, // duration on use
-            );
-            world.spawn_entity(cloud);
+            let mut cloud = AreaEffectCloudEntity::new(cloud_entity);
+            // Vanilla `DragonSittingFlamingPhase.doServerTick`.
+            let settings = cloud.settings_mut();
+            settings.owner_id = Some(entity.entity_id);
+            settings.radius = 5.0;
+            settings.duration = 200;
+            settings.custom_particle = Some(CloudParticle::DragonBreath { power: 1.0 });
+            settings.potion_duration_scale = 0.25;
+            settings.effects.push((
+                &pumpkin_data::effect::StatusEffect::INSTANT_DAMAGE,
+                1,
+                0,
+                false,
+                true,
+                true,
+            ));
+            world.spawn_entity(std::sync::Arc::new(cloud));
         }
     }
 }

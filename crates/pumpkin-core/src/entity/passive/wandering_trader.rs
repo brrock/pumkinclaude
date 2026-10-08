@@ -535,7 +535,7 @@ impl WanderingTraderEntity {
 
         if reward_exp {
             let position = self.get_entity().pos.load().add_raw(0.0, 0.5, 0.0);
-            ExperienceOrbEntity::spawn(world, position, reward_amount);
+            ExperienceOrbEntity::award(world, position, reward_amount);
         }
 
         if let Some(player) = world.get_player_by_uuid(player_uuid) {

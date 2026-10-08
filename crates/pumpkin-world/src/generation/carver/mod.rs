@@ -9,9 +9,11 @@ use crate::generation::generator::VanillaGenerator;
 use crate::generation::noise::aquifer_sampler::CarverAquiferSampler;
 use crate::generation::noise::perlin::DoublePerlinNoiseSampler;
 use crate::generation::noise::router::multi_noise_sampler::MultiNoiseSampler;
+use crate::generation::noise::router::proto_noise_router::ProtoNoiseRouter;
 use crate::generation::noise::router::surface_height_sampler::{
     SurfaceHeightEstimateSampler, SurfaceHeightSamplerBuilderOptions,
 };
+use crate::generation::surface::ore_vein::OreVeinSampler;
 use crate::generation::surface::rule::try_apply_material_rule;
 use crate::generation::surface::terrain::SurfaceTerrainBuilder;
 use crate::generation::surface::{MaterialRuleContext, steep_material_condition};
@@ -59,6 +61,7 @@ pub struct CarvingContext<'a> {
     pub min_y: i8,
     pub height: u16,
     pub random_config: &'a GlobalRandomConfig,
+    pub noise_router: &'a ProtoNoiseRouter,
     pub surface_noise: &'a DoublePerlinNoiseSampler,
     pub secondary_noise: &'a DoublePerlinNoiseSampler,
     pub terrain_builder: &'a SurfaceTerrainBuilder,
@@ -90,6 +93,11 @@ impl CarvingContext<'_> {
             self.min_y,
             self.height,
             &self.random_config.base_random_deriver,
+            OreVeinSampler::new(
+                self.noise_router,
+                &self.random_config.ore_random_deriver,
+                None,
+            ),
             self.terrain_builder,
             self.surface_noise,
             self.secondary_noise,
@@ -196,7 +204,6 @@ pub trait Carver {
         carver_chunk_pos: &Vector2<i32>,
         min_gen_y: i8,
         gen_depth: u16,
-        legacy_random_source: bool,
     );
 }
 
@@ -228,16 +235,13 @@ pub fn carve(chunk: &mut ProtoChunk, generator: &VanillaGenerator) {
             let carver_z = chunk_z + dz;
             let carver_chunk_pos = Vector2::new(carver_x, carver_z);
 
-            let carver_biome = if dx == 0 && dz == 0 {
-                chunk.get_biome(0, 0, 0)
-            } else {
-                supplier.biome(
-                    biome_coords::from_block(section_coords::section_to_block(carver_x)),
-                    0,
-                    biome_coords::from_block(section_coords::section_to_block(carver_z)),
-                    &mut multi_noise_sampler,
-                )
-            };
+            // Vanilla `getBiomeGenerationSettingsForCarver`: quart y 0 at the chunk's min corner.
+            let carver_biome = supplier.biome(
+                biome_coords::from_block(section_coords::section_to_block(carver_x)),
+                0,
+                biome_coords::from_block(section_coords::section_to_block(carver_z)),
+                &mut multi_noise_sampler,
+            );
 
             for (index, &config) in carver_biome.carvers.iter().enumerate() {
                 let seed = get_large_feature_seed(
@@ -245,8 +249,7 @@ pub fn carve(chunk: &mut ProtoChunk, generator: &VanillaGenerator) {
                     carver_x,
                     carver_z,
                 );
-                let mut carver_random =
-                    new_carver_random(seed, generator.settings.legacy_random_source);
+                let mut carver_random = new_carver_random(seed);
 
                 if should_carve(config, &mut carver_random) {
                     match config.additional {
@@ -259,7 +262,6 @@ pub fn carve(chunk: &mut ProtoChunk, generator: &VanillaGenerator) {
                                 &carver_chunk_pos,
                                 min_gen_y,
                                 gen_depth,
-                                generator.settings.legacy_random_source,
                             );
                         }
                         CarverAdditionalConfig::Canyon(_) => {
@@ -271,7 +273,6 @@ pub fn carve(chunk: &mut ProtoChunk, generator: &VanillaGenerator) {
                                 &carver_chunk_pos,
                                 min_gen_y,
                                 gen_depth,
-                                generator.settings.legacy_random_source,
                             );
                         }
                     }
@@ -304,6 +305,7 @@ pub fn carve(chunk: &mut ProtoChunk, generator: &VanillaGenerator) {
             min_y: generator.dimension.min_y as i8,
             height: generator.dimension.logical_height as u16,
             random_config: &generator.random_config,
+            noise_router: &generator.base_router.noise,
             surface_noise: &generator.terrain_cache.surface_noise,
             secondary_noise: &generator.terrain_cache.secondary_noise,
             terrain_builder: &generator.terrain_cache.terrain_builder,
@@ -377,16 +379,12 @@ fn get_large_feature_seed(seed: u64, chunk_x: i32, chunk_z: i32) -> u64 {
     result as u64
 }
 
-const fn new_carver_random(seed: u64, non_vanilla_random: bool) -> RandomGenerator {
-    if non_vanilla_random {
-        RandomGenerator::Xoroshiro(pumpkin_util::random::xoroshiro128::Xoroshiro::from_seed(
-            seed,
-        ))
-    } else {
-        RandomGenerator::Legacy(pumpkin_util::random::legacy_rand::LegacyRand::from_seed(
-            seed,
-        ))
-    }
+/// Carvers always roll a 48-bit LCG: `WorldgenRandom(LegacyRandomSource)` for the carver and
+/// `SingleThreadedRandomSource` for each tunnel, whatever the dimension's random source.
+const fn new_carver_random(seed: u64) -> RandomGenerator {
+    RandomGenerator::Legacy(pumpkin_util::random::legacy_rand::LegacyRand::from_seed(
+        seed,
+    ))
 }
 
 fn carve_top_material(
@@ -517,6 +515,7 @@ fn with_carve_run_options<F>(
         min_y: generator.dimension.min_y as i8,
         height: generator.dimension.logical_height as u16,
         random_config: &generator.random_config,
+        noise_router: &generator.base_router.noise,
         surface_noise: &generator.terrain_cache.surface_noise,
         secondary_noise: &generator.terrain_cache.secondary_noise,
         terrain_builder: &generator.terrain_cache.terrain_builder,

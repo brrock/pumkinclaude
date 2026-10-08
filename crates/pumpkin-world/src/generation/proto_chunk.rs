@@ -10,7 +10,6 @@ use pumpkin_data::structures::{
 use pumpkin_data::tag::RegistryKey;
 use pumpkin_data::{Block, BlockState, block_properties::blocks_movement, chunk::Biome};
 use pumpkin_data::{BlockId, BlockStateId, tag};
-use pumpkin_util::random::xoroshiro128::XoroshiroSplitter;
 use pumpkin_util::random::{RandomImpl, get_large_feature_seed, legacy_rand::LegacyRand};
 use pumpkin_util::{
     HeightMap,
@@ -30,7 +29,10 @@ use super::{
     },
     positions::chunk_pos::{start_block_x, start_block_z},
     section_coords,
-    surface::{MaterialRuleContext, estimate_surface_height, terrain::SurfaceTerrainBuilder},
+    surface::{
+        MaterialRuleContext, estimate_surface_height, ore_vein::OreVeinSampler,
+        terrain::SurfaceTerrainBuilder,
+    },
 };
 use crate::biome::BiomeSupplier;
 use crate::chunk::format::LightContainer;
@@ -42,7 +44,7 @@ use crate::generation::noise::aquifer_sampler::{FluidLevel, FluidLevelSamplerImp
 use crate::generation::noise::perlin::DoublePerlinNoiseSampler;
 use crate::generation::noise::router::density_volume::DensityVolume;
 use crate::generation::noise::router::surface_height_sampler::SurfaceHeightSamplerBuilderOptions;
-use crate::generation::noise::{CHUNK_DIM, ChunkNoiseGenerator, LAVA_BLOCK, WATER_BLOCK};
+use crate::generation::noise::{CHUNK_DIM, ChunkNoiseGenerator};
 use crate::generation::section_coords::section_to_block;
 use crate::generation::structure::lazily_generate_structure;
 use crate::generation::structure::placement::should_generate_structure;
@@ -742,7 +744,6 @@ impl ProtoChunk {
             generation_shape,
             sampler,
             settings.aquifers_enabled,
-            settings.ore_veins_enabled,
             beardifier_structures,
             beardifier_junctions,
             affected_box,
@@ -760,7 +761,6 @@ impl ProtoChunk {
         self.populate_noise(
             generator,
             &mut noise_sampler,
-            &generator.random_config.ore_random_deriver,
             &mut surface_height_estimate_sampler,
         );
 
@@ -861,7 +861,6 @@ impl ProtoChunk {
         &mut self,
         generator: &super::generator::VanillaGenerator,
         noise_sampler: &mut ChunkNoiseGenerator,
-        ore_random_deriver: &XoroshiroSplitter,
         surface_height_estimate_sampler: &mut SurfaceHeightEstimateSampler,
     ) {
         let volume = *noise_sampler.volume();
@@ -876,10 +875,8 @@ impl ProtoChunk {
                     let index = volume.index_unchecked(x, y, z);
                     let block_state = noise_sampler
                         .sample_block_state(
-                            ore_random_deriver,
                             &Vector3::new(block_x, block_y, block_z),
                             densities.density[index],
-                            densities.vein_sample(index).as_ref(),
                             surface_height_estimate_sampler,
                         )
                         .unwrap_or(generator.default_block);
@@ -954,6 +951,7 @@ impl ProtoChunk {
         Biome::from_id(self.get_terrain_gen_biome_id(x, y, z)).unwrap_or(&Biome::PLAINS)
     }
 
+    /// Vanilla `MaterialSystem.buildSurface`.
     #[expect(clippy::too_many_lines)]
     #[expect(
         clippy::panic,
@@ -967,57 +965,69 @@ impl ProtoChunk {
     ) {
         let start_x = chunk_pos::start_block_x(self.x);
         let start_z = chunk_pos::start_block_z(self.z);
-        let min_y = self.bottom_y();
+        let min_y = self.bottom_y() as i32;
+        let max_y = min_y + self.height() as i32 - 1;
 
         let settings = generator.settings;
         let random_config = &generator.random_config;
         let terrain_cache = &generator.terrain_cache;
+        let shape = &settings.shape;
 
-        let random = &random_config.base_random_deriver;
+        let ore_veins = OreVeinSampler::new(
+            &generator.base_router.noise,
+            &random_config.ore_random_deriver,
+            Some(DensityVolume::with_block_step(
+                CHUNK_DIM as usize,
+                shape.height as usize,
+                CHUNK_DIM as usize,
+                start_x,
+                i32::from(shape.min_y),
+                start_z,
+            )),
+        );
         let mut context = MaterialRuleContext::new(
             self.generation_bottom_y(),
             self.generation_height(),
-            random,
+            &random_config.base_random_deriver,
+            ore_veins,
             &terrain_cache.terrain_builder,
             &terrain_cache.surface_noise,
             &terrain_cache.secondary_noise,
             settings.sea_level,
         );
+        let biome_at = |chunk: &Self, x: i32, y: i32, z: i32| {
+            let Some(biome_id) =
+                chunk.get_terrain_gen_biome_id_from_neighborhood(surface_biomes, x, y, z)
+            else {
+                panic!("surface biome neighborhood must cover fuzzy biome lookup");
+            };
+            Biome::from_id(biome_id).unwrap_or(&Biome::PLAINS)
+        };
         for local_x in 0..16 {
             for local_z in 0..16 {
                 let x = start_x + local_x;
                 let z = start_z + local_z;
 
-                let top_block = self.top_block_height_exclusive(local_x, local_z);
-
-                let biome_y = if settings.legacy_random_source {
-                    0
-                } else {
-                    top_block
-                };
-
-                let Some(this_biome) =
-                    self.get_terrain_gen_biome_id_from_neighborhood(surface_biomes, x, biome_y, z)
-                else {
-                    panic!("surface biome neighborhood must cover fuzzy biome lookup");
-                };
-                // The pillar is filled with the default block above the surface, and vanilla keeps
-                // scanning from the pre-pillar height, so the pillar itself is never run through
-                // the material rules and stays stone instead of being banded like the terrain.
-                if this_biome == Biome::ERODED_BADLANDS {
-                    terrain_cache
-                        .terrain_builder
-                        .place_badlands_pillar(self, x, z, top_block);
+                let starting_height = self.top_block_height_exclusive(local_x, local_z);
+                let surface_biome = biome_at(self, x, starting_height, z);
+                if surface_biome == &Biome::ERODED_BADLANDS {
+                    terrain_cache.terrain_builder.place_badlands_pillar(
+                        self,
+                        x,
+                        z,
+                        starting_height,
+                    );
                 }
 
+                // Read again so a badlands pillar is run through the rules too.
+                let height = self.top_block_height_exclusive(local_x, local_z);
                 context.init_horizontal(x, z);
 
                 let mut stone_depth_above = 0;
-                let mut min = i32::MAX;
                 let mut fluid_height = i32::MIN;
-                for y in (min_y as i32..top_block).rev() {
-                    let pos = Vector3::new(x, y, z);
-                    let state = self.get_block_state(&pos).to_state();
+                let mut next_ceiling_stone_y = i32::MAX;
+                for y in (min_y..height).rev() {
+                    let state = self.get_block_state(&Vector3::new(x, y, z)).to_state();
                     if state.is_air() {
                         stone_depth_above = 0;
                         fluid_height = i32::MIN;
@@ -1029,67 +1039,48 @@ impl ProtoChunk {
                         }
                         continue;
                     }
-                    if min >= y {
-                        let shift = min_y << 4;
-                        min = shift as i32;
-
-                        for search_y in ((min_y as i32 - 1)..y).rev() {
-                            if search_y < min_y as i32 {
-                                min = search_y + 1;
-                                break;
-                            }
-
-                            let block_id = self
-                                .get_block_state(&Vector3::new(local_x, search_y, local_z))
-                                .to_block_id();
-
-                            if !(block_id != AIR_BLOCK
-                                && block_id != WATER_BLOCK
-                                && block_id != LAVA_BLOCK)
-                            {
-                                min = search_y + 1;
+                    if next_ceiling_stone_y >= y {
+                        // Below the chunk reads as air, so the scan always ends by `min_y`.
+                        next_ceiling_stone_y = min_y;
+                        for lookahead_y in (min_y..y).rev() {
+                            let next = self
+                                .get_block_state(&Vector3::new(x, lookahead_y, z))
+                                .to_state();
+                            if next.is_air() || next.is_liquid() {
+                                next_ceiling_stone_y = lookahead_y + 1;
                                 break;
                             }
                         }
                     }
 
                     stone_depth_above += 1;
-                    let stone_depth_below = y - min + 1;
+                    let stone_depth_below = y - next_ceiling_stone_y + 1;
                     context.init_vertical(stone_depth_above, stone_depth_below, y, fluid_height);
-
-                    if state.id == self.default_block.id {
-                        let Some(biome_id) = self.get_terrain_gen_biome_id_from_neighborhood(
-                            surface_biomes,
-                            context.block_pos_x,
-                            context.block_pos_y,
-                            context.block_pos_z,
-                        ) else {
-                            panic!("surface biome neighborhood must cover fuzzy biome lookup");
-                        };
-                        context.biome = Biome::from_id(biome_id).unwrap_or(&Biome::PLAINS);
-                        let new_state = try_apply_material_rule(
+                    if y <= max_y {
+                        context.biome = biome_at(self, x, y, z);
+                        if let Some(state) = try_apply_material_rule(
                             generator.surface_rule,
                             self,
                             &mut context,
                             surface_height_estimate_sampler,
-                        );
-
-                        if let Some(state) = new_state {
+                        ) {
                             self.set_block_state(x, y, z, state);
                         }
                     }
                 }
-                if this_biome == Biome::FROZEN_OCEAN || this_biome == Biome::DEEP_FROZEN_OCEAN {
+
+                if surface_biome == &Biome::FROZEN_OCEAN
+                    || surface_biome == &Biome::DEEP_FROZEN_OCEAN
+                {
                     let surface_estimate =
                         estimate_surface_height(&mut context, surface_height_estimate_sampler);
-
                     terrain_cache.terrain_builder.place_iceberg(
                         self,
-                        Biome::from_id(this_biome).unwrap_or(&Biome::PLAINS),
+                        surface_biome,
                         x,
                         z,
                         surface_estimate,
-                        top_block,
+                        starting_height,
                         settings.sea_level,
                         &random_config.base_random_deriver,
                     );

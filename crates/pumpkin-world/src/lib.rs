@@ -98,7 +98,6 @@ pub fn bench_create_and_populate_noise(random_config: &GlobalRandomConfig) {
         generation_shape,
         sampler,
         settings.aquifers_enabled,
-        settings.ore_veins_enabled,
         Vec::new(),
         Vec::new(),
         None,
@@ -118,7 +117,6 @@ pub fn bench_create_and_populate_noise(random_config: &GlobalRandomConfig) {
     chunk.populate_noise(
         generator,
         &mut noise_sampler,
-        &generator.random_config.ore_random_deriver,
         &mut surface_height_estimate_sampler,
     );
 }
@@ -196,7 +194,6 @@ pub fn bench_create_and_populate_noise_with_surface(random_config: &GlobalRandom
         generation_shape,
         sampler,
         settings.aquifers_enabled,
-        settings.ore_veins_enabled,
         Vec::new(),
         Vec::new(),
         None,
@@ -237,7 +234,6 @@ pub fn bench_create_and_populate_noise_with_surface(random_config: &GlobalRandom
     chunk.populate_noise(
         generator,
         &mut noise_sampler,
-        &generator.random_config.ore_random_deriver,
         &mut surface_height_estimate_sampler,
     );
     chunk.build_surface(

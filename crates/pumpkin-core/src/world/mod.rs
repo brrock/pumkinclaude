@@ -434,6 +434,31 @@ impl World {
         }
     }
 
+    /// Vanilla `TicketStorage.updateChunkForced`: forced chunks hold a `FORCED` ticket.
+    fn sync_forced_chunk_tickets(&self, unforced: &[Vector2<i32>], forced: &[Vector2<i32>]) {
+        if unforced.is_empty() && forced.is_empty() {
+            return;
+        }
+        let mut loading = self
+            .level
+            .chunk_loading
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        for &pos in unforced {
+            loading.remove_ticket(
+                pos,
+                pumpkin_world::chunk_system::ChunkLoading::FORCED_TICKET_LEVEL,
+            );
+        }
+        for &pos in forced {
+            loading.add_ticket(
+                pos,
+                pumpkin_world::chunk_system::ChunkLoading::FORCED_TICKET_LEVEL,
+            );
+        }
+        loading.send_change();
+    }
+
     pub fn update_active_chunks(&self) {
         let sim_dist = self.server.upgrade().map_or(10, |s| {
             s.advanced_config.networking.java.simulation_distance.get()
@@ -483,7 +508,9 @@ impl World {
         for id in removed_players {
             tracker.remove_player(id, &mut active_chunks);
         }
-        tracker.sync_forced_chunks(&forced_chunks, &mut active_chunks, &mut newly_active);
+        let (unforced, forced) =
+            tracker.sync_forced_chunks(&forced_chunks, &mut active_chunks, &mut newly_active);
+        self.sync_forced_chunk_tickets(&unforced, &forced);
 
         for pos in newly_active {
             if self.level.is_chunk_loaded(&pos) && tracker.loaded_active_chunks.insert(pos) {

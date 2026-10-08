@@ -5,7 +5,7 @@ use pumpkin_data::{
         UnaryOperation,
     },
 };
-use pumpkin_util::random::{legacy_rand::LegacyRand, xoroshiro128::XoroshiroSplitter};
+use pumpkin_util::random::{RandomDeriver, RandomDeriverImpl, legacy_rand::LegacyRand};
 
 use crate::{
     GlobalRandomConfig,
@@ -260,9 +260,7 @@ pub struct ProtoNoiseRouter {
     pub erosion: usize,
     pub depth: usize,
     pub final_density: usize,
-    pub vein_toggle: usize,
-    pub vein_ridged: usize,
-    pub vein_gap: usize,
+    pub material_functions: &'static [(&'static str, usize)],
 }
 
 pub struct ProtoSurfaceEstimator {
@@ -290,12 +288,41 @@ pub struct DoublePerlinNoiseBuilder;
 impl DoublePerlinNoiseBuilder {
     #[must_use]
     pub fn get_noise_sampler_for_id(
-        base_random_deriver: &XoroshiroSplitter,
+        base_random_deriver: &RandomDeriver,
         parameters: &DoublePerlinNoiseParameters,
     ) -> DoublePerlinNoiseSampler {
-        let mut random = base_random_deriver.from_lo_and_hi(parameters.lo, parameters.hi);
+        let mut random =
+            base_random_deriver.from_hash_of(parameters.lo, parameters.hi, parameters.legacy_hash);
         DoublePerlinNoiseSampler::from_params(&mut random, parameters, false)
     }
+}
+
+/// Vanilla `RandomState`'s `CompileContext.createNoiseSampler`: the nether climate noises are
+/// always built with the legacy nether biome initializer, whatever the dimension's random source.
+fn create_noise_sampler(
+    random_config: &GlobalRandomConfig,
+    parameters: &DoublePerlinNoiseParameters,
+) -> DoublePerlinNoiseSampler {
+    let legacy_seed_offset = if parameters.id == DoublePerlinNoiseParameters::NETHER_TEMPERATURE.id
+    {
+        Some(0)
+    } else if parameters.id == DoublePerlinNoiseParameters::NETHER_VEGETATION.id {
+        Some(1)
+    } else {
+        None
+    };
+    legacy_seed_offset.map_or_else(
+        || {
+            DoublePerlinNoiseBuilder::get_noise_sampler_for_id(
+                &random_config.base_random_deriver,
+                parameters,
+            )
+        },
+        |offset| {
+            let mut legacy_rand = LegacyRand::from_seed(random_config.seed.wrapping_add(offset));
+            DoublePerlinNoiseSampler::from_params(&mut legacy_rand, parameters, true)
+        },
+    )
 }
 
 fn build_spline_recursive(spline: &SplineRepr) -> SplineValue {
@@ -324,8 +351,6 @@ impl ProtoNoiseRouters {
         base_stack: &[BaseNoiseFunctionComponent],
         random_config: &GlobalRandomConfig,
     ) -> Box<[ProtoNoiseFunctionComponent]> {
-        let base_random_deriver = &random_config.base_random_deriver;
-
         // Contiguous memory for our function components
         let mut stack = Vec::<ProtoNoiseFunctionComponent>::with_capacity(base_stack.len());
 
@@ -367,28 +392,19 @@ impl ProtoNoiseRouters {
                     )),
                 ),
                 BaseNoiseFunctionComponent::Noise { data } => {
-                    let sampler = DoublePerlinNoiseBuilder::get_noise_sampler_for_id(
-                        base_random_deriver,
-                        &data.noise_id,
-                    );
+                    let sampler = create_noise_sampler(random_config, &data.noise_id);
                     ProtoNoiseFunctionComponent::Independent(
                         IndependentProtoNoiseFunctionComponent::Noise(Noise::new(sampler, data)),
                     )
                 }
                 BaseNoiseFunctionComponent::ShiftA { noise_id } => {
-                    let sampler = DoublePerlinNoiseBuilder::get_noise_sampler_for_id(
-                        base_random_deriver,
-                        noise_id,
-                    );
+                    let sampler = create_noise_sampler(random_config, noise_id);
                     ProtoNoiseFunctionComponent::Independent(
                         IndependentProtoNoiseFunctionComponent::ShiftA(ShiftA::new(sampler)),
                     )
                 }
                 BaseNoiseFunctionComponent::ShiftB { noise_id } => {
-                    let sampler = DoublePerlinNoiseBuilder::get_noise_sampler_for_id(
-                        base_random_deriver,
-                        noise_id,
-                    );
+                    let sampler = create_noise_sampler(random_config, noise_id);
                     ProtoNoiseFunctionComponent::Independent(
                         IndependentProtoNoiseFunctionComponent::ShiftB(ShiftB::new(sampler)),
                     )
@@ -420,30 +436,7 @@ impl ProtoNoiseRouters {
                     shift_z_index,
                     data,
                 } => {
-                    let sampler = match data.noise_id.id {
-                        id if id == DoublePerlinNoiseParameters::NETHER_TEMPERATURE.id => {
-                            let mut legacy_rand =
-                                LegacyRand::from_seed(random_config.seed.wrapping_add(0));
-                            DoublePerlinNoiseSampler::from_params(
-                                &mut legacy_rand,
-                                &data.noise_id,
-                                true,
-                            )
-                        }
-                        id if id == DoublePerlinNoiseParameters::NETHER_VEGETATION.id => {
-                            let mut legacy_rand =
-                                LegacyRand::from_seed(random_config.seed.wrapping_add(1));
-                            DoublePerlinNoiseSampler::from_params(
-                                &mut legacy_rand,
-                                &data.noise_id,
-                                true,
-                            )
-                        }
-                        _ => DoublePerlinNoiseBuilder::get_noise_sampler_for_id(
-                            base_random_deriver,
-                            &data.noise_id,
-                        ),
-                    };
+                    let sampler = create_noise_sampler(random_config, &data.noise_id);
                     ProtoNoiseFunctionComponent::Dependent(
                         DependentProtoNoiseFunctionComponent::ShiftedNoise(ShiftedNoise::new(
                             *shift_x_index,
@@ -770,9 +763,7 @@ impl ProtoNoiseRouters {
                 erosion: base.noise.erosion,
                 depth: base.noise.depth,
                 final_density: base.noise.final_density,
-                vein_toggle: base.noise.vein_toggle,
-                vein_ridged: base.noise.vein_ridged,
-                vein_gap: base.noise.vein_gap,
+                material_functions: base.noise.material_functions,
             },
             surface_estimator: ProtoSurfaceEstimator {
                 full_component_stack: surface_stack,

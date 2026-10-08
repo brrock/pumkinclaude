@@ -12,7 +12,9 @@ impl JavaClient {
         if player.check_chat_spam(server, crate::entity::player::SpamType::Command) {
             return;
         }
-        let command_str = command.command.strip_prefix('/').unwrap_or(command.command);
+        // The client already removed the chat slash, so any slash left is part of the command
+        // (`//wand` arrives as `/wand`); vanilla parses it as received.
+        let command_str = command.command;
         send_cancellable! {{
             server;
             PlayerCommandSendEvent {

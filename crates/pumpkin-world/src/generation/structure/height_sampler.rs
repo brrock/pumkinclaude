@@ -76,7 +76,6 @@ impl<'a> NoiseHeightSampler<'a> {
             shape,
             fluid_sampler,
             settings.aquifers_enabled,
-            false,
             Vec::new(),
             Vec::new(),
             None,
@@ -89,10 +88,8 @@ impl<'a> NoiseHeightSampler<'a> {
             let index = volume.index_unchecked(0, y, 0);
             let state = noise
                 .sample_block_state(
-                    &self.generator.random_config.ore_random_deriver,
                     &Vector3::new(x, block_y, z),
                     densities.density[index],
-                    densities.vein_sample(index).as_ref(),
                     &mut self.preliminary,
                 )
                 .unwrap_or(self.generator.default_block);

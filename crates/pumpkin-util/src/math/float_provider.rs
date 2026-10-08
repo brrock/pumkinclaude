@@ -249,8 +249,7 @@ impl UniformFloatProvider {
     /// A random float in the range [`min_inclusive`, `max_exclusive`].
     pub fn get(&self, random: &mut impl RandomImpl) -> f32 {
         // NOTE: Use the random range in [min_inclusive, max_exclusive)
-        let range = self.max_exclusive - self.min_inclusive;
-        random.next_f32().mul_add(range, self.min_inclusive)
+        random.next_f32() * (self.max_exclusive - self.min_inclusive) + self.min_inclusive
     }
 
     /// Returns the maximum exclusive value.
@@ -333,8 +332,7 @@ impl ClampedNormalFloatProvider {
     /// A random float from a normal distribution, clamped to [min, max].
     pub fn get(&self, random: &mut impl RandomImpl) -> f32 {
         // NOTE: Generate normal distribution value
-        let gaussian = random.next_gaussian() as f32;
-        let value = gaussian.mul_add(self.deviation, self.mean);
+        let value = self.mean + random.next_gaussian() as f32 * self.deviation;
 
         // NOTE: Clamp to min/max range
         value.clamp(self.min, self.max)
@@ -409,29 +407,13 @@ impl TrapezoidFloatProvider {
     /// # Returns
     /// A random float from the trapezoidal distribution in the range [min, max].
     pub fn get(&self, random: &mut impl RandomImpl) -> f32 {
-        // NOTE: Trapezoid distribution: flat plateau in the middle, linear ramps on the sides.
+        // Vanilla `TrapezoidFloat.sample`.
         let range = self.max - self.min;
-        let plateau_range = range * self.plateau;
-        let ramp_range = (range - plateau_range) * 0.5;
-
-        let random_value = random.next_f32();
-
-        if random_value < self.plateau.mul_add(-0.5, 0.5) {
-            // NOTE: Left ramp: quadratic distribution biased toward plateau
-            let scaled = random_value / self.plateau.mul_add(-0.5, 0.5);
-            let sqrt_scaled = scaled.sqrt();
-            self.min + ramp_range * sqrt_scaled
-        } else if random_value > self.plateau.mul_add(0.5, 0.5) {
-            // NOTE: Right ramp: quadratic distribution biased toward plateau
-            let scaled =
-                (random_value - self.plateau.mul_add(0.5, 0.5)) / self.plateau.mul_add(-0.5, 0.5);
-            let sqrt_scaled = (1.0 - scaled).sqrt();
-            self.max - ramp_range * sqrt_scaled
-        } else {
-            // NOTE: Plateau: uniform distribution
-            let plateau_pos = (random_value - self.plateau.mul_add(-0.5, 0.5)) / self.plateau;
-            self.min + ramp_range + plateau_pos * plateau_range
-        }
+        let plateau_start = (range - self.plateau) / 2.0;
+        let plateau_end = range - plateau_start;
+        let a = random.next_f32() * plateau_end;
+        let b = random.next_f32() * plateau_start;
+        self.min + a + b
     }
 
     /// Returns the maximum inclusive value.

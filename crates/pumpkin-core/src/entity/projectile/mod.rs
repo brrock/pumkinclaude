@@ -9,9 +9,11 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
 };
 pub mod arrow;
+pub mod dragon_fireball;
 pub mod egg;
 pub mod ender_pearl;
 pub mod evoker_fangs;
+pub mod experience_bottle;
 pub mod eye_of_ender;
 pub mod fireball;
 pub mod firework_rocket;

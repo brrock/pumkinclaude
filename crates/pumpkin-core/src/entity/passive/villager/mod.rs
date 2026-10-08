@@ -873,7 +873,7 @@ impl VillagerEntity {
         self.get_entity().send_bedrock_actor_data(&bedrock_metadata);
 
         if reward_exp {
-            ExperienceOrbEntity::spawn(world, self.get_entity().pos.load(), xp_gain as u32);
+            ExperienceOrbEntity::award(world, self.get_entity().pos.load(), xp_gain as u32);
         }
 
         if let Some(player) = world.get_player_by_uuid(player_uuid) {

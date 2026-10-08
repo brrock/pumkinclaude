@@ -161,11 +161,17 @@ impl LegacySplitter {
     }
 }
 
+impl LegacySplitter {
+    /// Vanilla `fromHashOf` for a name whose `String.hashCode` is already known.
+    #[must_use]
+    pub const fn from_java_hash(&self, java_hash: i32) -> RandomGenerator {
+        RandomGenerator::Legacy(LegacyRand::from_seed((java_hash as u64) ^ self.seed))
+    }
+}
+
 impl RandomDeriverImpl for LegacySplitter {
     fn split_string(&self, seed: &str) -> RandomGenerator {
-        let string_hash = java_string_hash(seed);
-
-        RandomGenerator::Legacy(LegacyRand::from_seed((string_hash as u64) ^ self.seed))
+        self.from_java_hash(java_string_hash(seed))
     }
 
     fn split_u64(&self, seed: u64) -> RandomGenerator {

@@ -4,10 +4,7 @@ use pumpkin_data::{
 };
 use pumpkin_util::{
     math::vector3::Vector3,
-    random::{
-        RandomImpl,
-        xoroshiro128::{Xoroshiro, XoroshiroSplitter},
-    },
+    random::{RandomDeriver, RandomDeriverImpl, RandomGenerator, RandomImpl},
 };
 
 use crate::{
@@ -32,7 +29,7 @@ pub struct SurfaceTerrainBuilder {
 }
 
 impl SurfaceTerrainBuilder {
-    pub fn new(random_deriver: &XoroshiroSplitter) -> Self {
+    pub fn new(random_deriver: &RandomDeriver) -> Self {
         Self {
             terracotta_bands: Self::create_terracotta_bands(
                 random_deriver.split_string("minecraft:clay_bands"),
@@ -76,7 +73,7 @@ impl SurfaceTerrainBuilder {
     const LIGHT_GRAY_TERRACOTTA: BlockStateId = Block::LIGHT_GRAY_TERRACOTTA.default_state.id;
     const TERRACOTTA: BlockStateId = Block::TERRACOTTA.default_state.id;
 
-    fn create_terracotta_bands(mut random: Xoroshiro) -> Box<[BlockStateId]> {
+    fn create_terracotta_bands(mut random: RandomGenerator) -> Box<[BlockStateId]> {
         let mut block_states = [Self::TERRACOTTA; 192];
 
         let mut i = 0;
@@ -116,7 +113,7 @@ impl SurfaceTerrainBuilder {
     }
 
     fn add_terracotta_bands(
-        random: &mut Xoroshiro,
+        random: &mut RandomGenerator,
         terracotta_bands: &mut [BlockStateId],
         min_band_size: i32,
         state: BlockStateId,
@@ -209,7 +206,7 @@ impl SurfaceTerrainBuilder {
         estimated_surface_y: i32,
         current_top_y: i32,
         sea_level: i32,
-        random_deriver: &XoroshiroSplitter,
+        random_deriver: &RandomDeriver,
     ) {
         let iceburg_surface_noise =
             (self.iceberg_surface_noise.sample(x as f64, 0.0, z as f64) * 8.25).abs();
