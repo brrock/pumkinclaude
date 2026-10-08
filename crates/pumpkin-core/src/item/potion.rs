@@ -2,6 +2,7 @@ use crate::entity::EntityBase;
 use crate::entity::living::LivingEntity;
 use pumpkin_data::effect::StatusEffect;
 use pumpkin_data::item_stack::ItemStack;
+use pumpkin_data::tag::Taggable;
 
 /// Utilities for reading potion contents from an `ItemStack` and applying effects.
 pub struct PotionContents;
@@ -33,7 +34,84 @@ impl PotionApplicationSource {
     }
 }
 
+/// Vanilla `MobEffect.isInstantaneous`.
+#[must_use]
+pub fn is_instantaneous(effect: &StatusEffect) -> bool {
+    effect == &StatusEffect::INSTANT_HEALTH
+        || effect == &StatusEffect::INSTANT_DAMAGE
+        || effect == &StatusEffect::SATURATION
+}
+
+/// Vanilla `HealOrHarmMobEffect.applyInstantaneousEffect`. Harming heals and healing harms
+/// entities tagged `inverted_healing_and_harm`, and the damage is credited to `source` and
+/// `owner` when there is a source.
+pub fn apply_instantaneous_effect(
+    target: &dyn EntityBase,
+    effect: &StatusEffect,
+    amplifier: u8,
+    scale: f64,
+    source: Option<&dyn EntityBase>,
+    owner: Option<&dyn EntityBase>,
+) {
+    let Some(living) = target.get_living_entity() else {
+        return;
+    };
+    let is_harm = effect == &StatusEffect::INSTANT_DAMAGE;
+    if !is_harm && effect != &StatusEffect::INSTANT_HEALTH {
+        return;
+    }
+    let inverted = living
+        .entity
+        .entity_type
+        .has_tag(&pumpkin_data::tag::EntityType::MINECRAFT_INVERTED_HEALING_AND_HARM);
+    if is_harm == inverted {
+        living.heal((scale * f64::from(4 << amplifier) + 0.5) as i32 as f32);
+    } else {
+        let amount = (scale * f64::from(6 << amplifier) + 0.5) as i32 as f32;
+        let damage_type = if source.is_some() {
+            pumpkin_data::damage::DamageType::INDIRECT_MAGIC
+        } else {
+            pumpkin_data::damage::DamageType::MAGIC
+        };
+        living.damage_with_context(target, amount, damage_type, None, source, owner);
+    }
+}
+
+/// Vanilla `PotionContents.BASE_POTION_COLOR`, used when nothing tints the potion.
+pub const BASE_POTION_COLOR: i32 = -13_083_194;
+
 impl PotionContents {
+    /// Vanilla `PotionContents.getColor`: the custom colour, else the visible effects' colours
+    /// averaged with each weighted by its level, else [`BASE_POTION_COLOR`].
+    #[must_use]
+    pub fn color_of(
+        stack: &ItemStack,
+        effects: &[(&'static StatusEffect, i32, u8, bool, bool, bool)],
+    ) -> i32 {
+        if let Some(color) = stack
+            .get_data_component::<pumpkin_data::data_component_impl::PotionContentsImpl>()
+            .and_then(|contents| contents.custom_color)
+        {
+            return color;
+        }
+        let (mut red, mut green, mut blue, mut total) = (0, 0, 0, 0);
+        for &(effect, _, amplifier, _, show_particles, _) in effects {
+            if !show_particles {
+                continue;
+            }
+            let weight = i32::from(amplifier) + 1;
+            red += weight * ((effect.color >> 16) & 0xFF);
+            green += weight * ((effect.color >> 8) & 0xFF);
+            blue += weight * (effect.color & 0xFF);
+            total += weight;
+        }
+        if total == 0 {
+            BASE_POTION_COLOR
+        } else {
+            (red / total) << 16 | (green / total) << 8 | (blue / total)
+        }
+    }
+
     /// Read effects from an `ItemStack`'s `PotionContents` data component.
     #[must_use]
     pub fn read_potion_effects(

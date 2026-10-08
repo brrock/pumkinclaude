@@ -1,12 +1,15 @@
 use super::EnderDragonPhase;
 use crate::entity::EntityBase;
+use crate::entity::projectile::dragon_fireball::DragonFireballEntity;
 use crate::entity::{
     Entity,
-    area_effect_cloud::AreaEffectCloudEntity,
     boss::ender_dragon::{EnderDragonEntity, Vector3Ext, find_path},
 };
 use pumpkin_data::entity::EntityType;
+use pumpkin_data::world::WorldEvent;
+use pumpkin_util::math::position::BlockPos;
 use pumpkin_util::math::vector3::Vector3;
+use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
 pub struct StrafingPhase;
@@ -152,30 +155,38 @@ impl super::Phase for StrafingPhase {
                 *charge = 0;
                 drop(charge);
 
-                let cloud_entity =
-                    Entity::new(world.clone(), player_pos, &EntityType::AREA_EFFECT_CLOUD);
-                let cloud = AreaEffectCloudEntity::create(
-                    cloud_entity,
-                    pumpkin_data::item_stack::ItemStack::new(
-                        0,
-                        &pumpkin_data::item::Item::DRAGON_BREATH,
-                    ),
-                    vec![(
-                        &pumpkin_data::effect::StatusEffect::INSTANT_DAMAGE,
-                        1,
-                        0,
-                        false,
-                        true,
-                        true,
-                    )],
-                    600,
-                    3.0,
-                    20,
-                    20,
-                    0.5,
-                    -100,
-                );
-                world.spawn_entity(cloud);
+                // Vanilla `DragonStrafePlayerPhase`: fire a dragon fireball from the head.
+                let dragon_entity = &dragon.mob_entity.living_entity.entity;
+                if dragon_entity.has_line_of_sight(player.get_entity()) {
+                    let head = dragon.parts[0].entity.pos.load();
+                    let head_height = f64::from(dragon.parts[0].entity.height());
+                    let view = dragon_entity.rotation();
+                    let spawn = Vector3::new(
+                        head.x - f64::from(view.x),
+                        head.y + head_height * 0.5 + 0.5,
+                        head.z - f64::from(view.z),
+                    );
+                    let target_height = f64::from(player.get_entity().height());
+                    let direction = Vector3::new(
+                        player_pos.x - spawn.x,
+                        player_pos.y + target_height * 0.5 - spawn.y,
+                        player_pos.z - spawn.z,
+                    );
+                    if !dragon_entity.silent.load(Ordering::Relaxed) {
+                        world.sync_world_event(
+                            WorldEvent::SoundDragonFireball,
+                            BlockPos::floored_v(dragon_entity.pos.load()),
+                            0,
+                        );
+                    }
+                    let fireball = DragonFireballEntity::new_shot(
+                        Entity::new(world.clone(), spawn, &EntityType::DRAGON_FIREBALL),
+                        dragon_entity,
+                        spawn,
+                        direction,
+                    );
+                    world.spawn_entity(Arc::new(fireball));
+                }
 
                 dragon
                     .path
