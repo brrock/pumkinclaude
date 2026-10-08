@@ -329,17 +329,17 @@ impl WorldAquiferSampler {
     }
 
     #[inline]
-    fn max_distance(i: i32, a: i32) -> f32 {
-        1.0 - ((a - i).abs() as f32) / 25.0
+    fn max_distance(i: i32, a: i32) -> f64 {
+        1.0 - f64::from(a - i) / 25.0
     }
 
     fn calculate_density(
-        barrier_sample: &mut Option<f32>,
+        barrier_sample: &mut Option<f64>,
         pos: &Vector3<i32>,
         router: &mut ChunkNoiseRouter,
         level_1: &FluidLevel,
         level_2: &FluidLevel,
-    ) -> f32 {
+    ) -> f64 {
         let y = pos.y;
         let block_state1 = level_1.get_block(y);
         let block_state2 = level_2.get_block(y);
@@ -351,9 +351,9 @@ impl WorldAquiferSampler {
             if level_diff == 0 {
                 0.0
             } else {
-                let avg_level = 0.5 * (level_1.max_y + level_2.max_y) as f32;
-                let scaled_level = y as f32 + 0.5 - avg_level;
-                let halved_diff = level_diff as f32 / 2.0;
+                let avg_level = 0.5 * f64::from(level_1.max_y + level_2.max_y);
+                let scaled_level = f64::from(y) + 0.5 - avg_level;
+                let halved_diff = f64::from(level_diff) / 2.0;
 
                 let o = halved_diff - scaled_level.abs();
                 let q = if scaled_level > 0.0 {
@@ -364,7 +364,7 @@ impl WorldAquiferSampler {
                 };
 
                 let r = if (-2.0..=2.0).contains(&q) {
-                    *barrier_sample.get_or_insert_with(|| router.barrier_noise(pos))
+                    *barrier_sample.get_or_insert_with(|| f64::from(router.barrier_noise(pos)))
                 } else {
                     0.0
                 };
@@ -672,7 +672,7 @@ impl WorldAquiferSampler {
                 &fluid_level3,
             );
 
-        if density + barrier12 > 0.0 {
+        if f64::from(density) + barrier12 > 0.0 {
             return (None, false);
         }
 
@@ -688,7 +688,7 @@ impl WorldAquiferSampler {
                     &fluid_level2,
                     &fluid_level4,
                 );
-            if density + barrier13 > 0.0 {
+            if f64::from(density) + barrier13 > 0.0 {
                 return (None, false);
             }
         }
@@ -704,7 +704,7 @@ impl WorldAquiferSampler {
                     &fluid_level3,
                     &fluid_level4,
                 );
-            if density + barrier23 > 0.0 {
+            if f64::from(density) + barrier23 > 0.0 {
                 return (None, false);
             }
         }
@@ -1802,7 +1802,7 @@ mod random_positions_and_hypot {
                 &level2,
             );
             assert!(
-                (calculated - result as f32).abs() < 1e-4,
+                (calculated - result).abs() < 1e-4,
                 "Failed at pos={pos:?}: got {calculated}, expected {result}"
             );
         }
